@@ -24,6 +24,8 @@
 #include "include/fixed_frame.hpp"
 #include "include/config_frame.hpp"
 #include "include/frame_traits.hpp"
+// Use builder pattern and new CRTP interface
+#include "include/frame_builder.hpp"
 
 using namespace USBCANBridge;
 
@@ -72,77 +74,38 @@ std::vector<std::byte> make_byte_vector(const std::vector<uint8_t>& values) {
  */
 void test_variable_frame_standard() {
     std::cout << "\n=== Variable Frame with Standard ID ===\n";
-
     try {
-        VariableFrame frame;
-        using VarTraits = FrameTraits<VariableFrame>;
+        auto frame = USBCANBridge::make_variable_frame()
+            .can_id(0x0123)
+            .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
+            .dlc(8)
+            .build();
 
-        // Set frame type first
-        auto set_frame_type_result = frame.impl_set_frame_type(FrameType::STD_VAR);
-        if (set_frame_type_result.fail()) {
-            std::cout << "Failed to set frame type: " <<
-                static_cast<int>(set_frame_type_result.status.value()) << std::endl;
+        std::vector<std::byte> buffer(frame.get_raw_data().size());
+        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+            buffer.size()));
+        if (!serialize_result) {
+            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
             return;
         }
+        print_hex(buffer, "Serialized Variable Frame (Standard)");
 
-        // Set frame format
-        auto set_frame_fmt_result = frame.impl_set_frame_fmt(FrameFmt::DATA_VAR);
-        if (set_frame_fmt_result.fail()) {
-            std::cout << "Failed to set frame format: " <<
-                static_cast<int>(set_frame_fmt_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Set ID (0x0123 in little-endian: 23 01)
-        VarTraits::IDType id_variant = std::array<std::byte, 2>{std::byte{0x23}, std::byte{0x01}};
-        VarTraits::IDPair id_pair = {id_variant, 2};
-        auto set_id_result = frame.impl_set_id(id_pair);
-        if (set_id_result.fail()) {
-            std::cout << "Failed to set ID: " << static_cast<int>(set_id_result.status.value()) <<
-                std::endl;
-            return;
-        }
-
-        // Set data payload (8 bytes: 11 22 33 44 55 66 77 88)
-        std::vector<std::byte> data_bytes = make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-                                                              0x77, 0x88});
-        VarTraits::PayloadPair payload = {data_bytes, 8};
-        auto set_data_result = frame.impl_set_data(payload);
-        if (set_data_result.fail()) {
-            std::cout << "Failed to set data: " <<
-                static_cast<int>(set_data_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Serialize the frame
-        auto serialize_result = frame.impl_serialize();
-        if (serialize_result.fail()) {
-            std::cout << "Failed to serialize: " <<
-                static_cast<int>(serialize_result.status.value()) << std::endl;
-            return;
-        }
-
-        auto serialized_data = serialize_result.value;
-        print_hex(serialized_data, "Serialized Variable Frame (Standard)");
-
-        // Create new frame and deserialize
         VariableFrame new_frame;
-        auto deserialize_result = new_frame.impl_deserialize(serialized_data.data(),
-            serialized_data.size());
-        if (deserialize_result.fail()) {
-            std::cout << "Failed to deserialize: " <<
-                static_cast<int>(deserialize_result.status.value()) << std::endl;
+        auto deserialize_result =
+            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+            buffer.size()));
+        if (!deserialize_result) {
+            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
             return;
         }
-
-        // Verify by serializing again
-        auto verify_result = new_frame.impl_serialize();
+        std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
+        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+            verify_buffer.size()));
         if (verify_result.ok()) {
-            print_hex(verify_result.value, "Deserialized Variable Frame (Standard)");
-            std::cout << "Roundtrip test: " << (serialized_data ==
-            verify_result.value ? "PASSED" : "FAILED") << std::endl;
+            print_hex(verify_buffer, "Deserialized Variable Frame (Standard)");
+            std::cout << "Roundtrip test: " << (buffer ==
+            verify_buffer ? "PASSED" : "FAILED") << std::endl;
         }
-
     } catch (const std::exception& e) {
         std::cout << "Exception in variable frame standard test: " << e.what() << std::endl;
     }
@@ -154,78 +117,39 @@ void test_variable_frame_standard() {
  */
 void test_variable_frame_extended() {
     std::cout << "\n=== Variable Frame with Extended ID ===\n";
-
     try {
-        VariableFrame frame;
-        using VarTraits = FrameTraits<VariableFrame>;
+        auto frame = USBCANBridge::make_variable_frame()
+            .extended_id(true)
+            .can_id(0x01234567)
+            .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
+            .dlc(8)
+            .build();
 
-        // Set frame type first
-        auto set_frame_type_result = frame.impl_set_frame_type(FrameType::EXT_VAR);
-        if (set_frame_type_result.fail()) {
-            std::cout << "Failed to set frame type: " <<
-                static_cast<int>(set_frame_type_result.status.value()) << std::endl;
+        std::vector<std::byte> buffer(frame.get_raw_data().size());
+        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+            buffer.size()));
+        if (!serialize_result) {
+            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
             return;
         }
+        print_hex(buffer, "Serialized Variable Frame (Extended)");
 
-        // Set frame format
-        auto set_frame_fmt_result = frame.impl_set_frame_fmt(FrameFmt::DATA_VAR);
-        if (set_frame_fmt_result.fail()) {
-            std::cout << "Failed to set frame format: " <<
-                static_cast<int>(set_frame_fmt_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Set extended ID (0x01234567 in little-endian: 67 45 23 01)
-        VarTraits::IDType id_variant = std::array<std::byte, 4>{std::byte{0x67}, std::byte{0x45},
-                                                                std::byte{0x23}, std::byte{0x01}};
-        VarTraits::IDPair id_pair = {id_variant, 4};
-        auto set_id_result = frame.impl_set_id(id_pair);
-        if (set_id_result.fail()) {
-            std::cout << "Failed to set ID: " << static_cast<int>(set_id_result.status.value()) <<
-                std::endl;
-            return;
-        }
-
-        // Set data payload (8 bytes: 11 22 33 44 55 66 77 88)
-        std::vector<std::byte> data_bytes = make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-                                                              0x77, 0x88});
-        VarTraits::PayloadPair payload = {data_bytes, 8};
-        auto set_data_result = frame.impl_set_data(payload);
-        if (set_data_result.fail()) {
-            std::cout << "Failed to set data: " <<
-                static_cast<int>(set_data_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Serialize the frame
-        auto serialize_result = frame.impl_serialize();
-        if (serialize_result.fail()) {
-            std::cout << "Failed to serialize: " <<
-                static_cast<int>(serialize_result.status.value()) << std::endl;
-            return;
-        }
-
-        auto serialized_data = serialize_result.value;
-        print_hex(serialized_data, "Serialized Variable Frame (Extended)");
-
-        // Create new frame and deserialize
         VariableFrame new_frame;
-        auto deserialize_result = new_frame.impl_deserialize(serialized_data.data(),
-            serialized_data.size());
-        if (deserialize_result.fail()) {
-            std::cout << "Failed to deserialize: " <<
-                static_cast<int>(deserialize_result.status.value()) << std::endl;
+        auto deserialize_result =
+            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+            buffer.size()));
+        if (!deserialize_result) {
+            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
             return;
         }
-
-        // Verify by serializing again
-        auto verify_result = new_frame.impl_serialize();
+        std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
+        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+            verify_buffer.size()));
         if (verify_result.ok()) {
-            print_hex(verify_result.value, "Deserialized Variable Frame (Extended)");
-            std::cout << "Roundtrip test: " << (serialized_data ==
-            verify_result.value ? "PASSED" : "FAILED") << std::endl;
+            print_hex(verify_buffer, "Deserialized Variable Frame (Extended)");
+            std::cout << "Roundtrip test: " << (buffer ==
+            verify_buffer ? "PASSED" : "FAILED") << std::endl;
         }
-
     } catch (const std::exception& e) {
         std::cout << "Exception in variable frame extended test: " << e.what() << std::endl;
     }
@@ -237,76 +161,41 @@ void test_variable_frame_extended() {
  */
 void test_fixed_frame_standard() {
     std::cout << "\n=== Fixed Frame with Standard ID ===\n";
-
     try {
-        FixedFrame frame;
-        using FixedTraits = FrameTraits<FixedFrame>;
+        auto frame = USBCANBridge::make_fixed_frame()
+            .frame_type(FrameType::STD_FIXED)
+            .can_id(0x0123)
+            .data(std::vector<std::byte>(make_bytes<8>({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                                                        0x88}).begin(),
+            make_bytes<8>({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}).end()))
+            .dlc(8)
+            .build();
 
-        // Set frame type to standard fixed
-        auto set_frame_type_result = frame.impl_set_frame_type(FrameType::STD_FIXED);
-        if (set_frame_type_result.fail()) {
-            std::cout << "Failed to set frame type: " <<
-                static_cast<int>(set_frame_type_result.status.value()) << std::endl;
+        std::array<std::byte, 20> buffer;
+        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+            buffer.size()));
+        if (!serialize_result) {
+            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
             return;
         }
+        print_hex(buffer, "Serialized Fixed Frame (Standard)");
 
-        // Set frame format to data fixed
-        auto set_frame_fmt_result = frame.impl_set_frame_fmt(FrameFmt::DATA_FIXED);
-        if (set_frame_fmt_result.fail()) {
-            std::cout << "Failed to set frame format: " <<
-                static_cast<int>(set_frame_fmt_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Set ID (0x000123 as 2-byte standard ID in little-endian: 23 01, padded: 01 23 01 00)
-        std::array<std::byte, 4> id_bytes = make_bytes<4>({0x01, 0x23, 0x01, 0x00});
-        FixedTraits::IDPair id_pair = {id_bytes, 2}; // Only 2 bytes for standard ID
-        auto set_id_result = frame.impl_set_id(id_pair);
-        if (set_id_result.fail()) {
-            std::cout << "Failed to set ID: " << static_cast<int>(set_id_result.status.value()) <<
-                std::endl;
-            return;
-        }
-
-        // Set data payload (8 bytes: 11 22 33 44 55 66 77 88)
-        std::array<std::byte,
-            8> data_bytes = make_bytes<8>({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88});
-        FixedTraits::PayloadPair payload = {data_bytes, 8}; // DLC = 8
-        auto set_data_result = frame.impl_set_data(payload);
-        if (set_data_result.fail()) {
-            std::cout << "Failed to set data: " <<
-                static_cast<int>(set_data_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Serialize the frame
-        auto serialize_result = frame.impl_serialize();
-        if (serialize_result.fail()) {
-            std::cout << "Failed to serialize: " <<
-                static_cast<int>(serialize_result.status.value()) << std::endl;
-            return;
-        }
-
-        auto serialized_data = serialize_result.value;
-        print_hex(serialized_data, "Serialized Fixed Frame (Standard)");
-
-        // Create new frame and deserialize
         FixedFrame new_frame;
-        auto deserialize_result = new_frame.impl_deserialize(serialized_data);
-        if (deserialize_result.fail()) {
-            std::cout << "Failed to deserialize: " <<
-                static_cast<int>(deserialize_result.status.value()) << std::endl;
+        auto deserialize_result =
+            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+            buffer.size()));
+        if (!deserialize_result) {
+            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
             return;
         }
-
-        // Verify by serializing again
-        auto verify_result = new_frame.impl_serialize();
+        std::array<std::byte, 20> verify_buffer;
+        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+            verify_buffer.size()));
         if (verify_result.ok()) {
-            print_hex(verify_result.value, "Deserialized Fixed Frame (Standard)");
-            std::cout << "Roundtrip test: " << (serialized_data ==
-            verify_result.value ? "PASSED" : "FAILED") << std::endl;
+            print_hex(verify_buffer, "Deserialized Fixed Frame (Standard)");
+            std::cout << "Roundtrip test: " << (buffer ==
+            verify_buffer ? "PASSED" : "FAILED") << std::endl;
         }
-
     } catch (const std::exception& e) {
         std::cout << "Exception in fixed frame standard test: " << e.what() << std::endl;
     }
@@ -318,76 +207,41 @@ void test_fixed_frame_standard() {
  */
 void test_fixed_frame_extended() {
     std::cout << "\n=== Fixed Frame with Extended ID ===\n";
-
     try {
-        FixedFrame frame;
-        using FixedTraits = FrameTraits<FixedFrame>;
+        auto frame = USBCANBridge::make_fixed_frame()
+            .frame_type(FrameType::EXT_FIXED)
+            .can_id(0x12345678)
+            .data(std::vector<std::byte>(make_bytes<8>({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                                        0x08}).begin(),
+            make_bytes<8>({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}).end()))
+            .dlc(8)
+            .build();
 
-        // Set frame type to extended fixed
-        auto set_frame_type_result = frame.impl_set_frame_type(FrameType::EXT_FIXED);
-        if (set_frame_type_result.fail()) {
-            std::cout << "Failed to set frame type: " <<
-                static_cast<int>(set_frame_type_result.status.value()) << std::endl;
+        std::array<std::byte, 20> buffer;
+        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+            buffer.size()));
+        if (!serialize_result) {
+            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
             return;
         }
+        print_hex(buffer, "Serialized Fixed Frame (Extended)");
 
-        // Set frame format to data fixed
-        auto set_frame_fmt_result = frame.impl_set_frame_fmt(FrameFmt::DATA_FIXED);
-        if (set_frame_fmt_result.fail()) {
-            std::cout << "Failed to set frame format: " <<
-                static_cast<int>(set_frame_fmt_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Set extended ID (0x12345678 in little-endian: 78 56 34 12)
-        std::array<std::byte, 4> id_bytes = make_bytes<4>({0x78, 0x56, 0x34, 0x12});
-        FixedTraits::IDPair id_pair = {id_bytes, 4}; // 4 bytes for extended ID
-        auto set_id_result = frame.impl_set_id(id_pair);
-        if (set_id_result.fail()) {
-            std::cout << "Failed to set ID: " << static_cast<int>(set_id_result.status.value()) <<
-                std::endl;
-            return;
-        }
-
-        // Set data payload (8 bytes: 01 02 03 04 05 06 07 08)
-        std::array<std::byte,
-            8> data_bytes = make_bytes<8>({0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08});
-        FixedTraits::PayloadPair payload = {data_bytes, 8}; // DLC = 8
-        auto set_data_result = frame.impl_set_data(payload);
-        if (set_data_result.fail()) {
-            std::cout << "Failed to set data: " <<
-                static_cast<int>(set_data_result.status.value()) << std::endl;
-            return;
-        }
-
-        // Serialize the frame
-        auto serialize_result = frame.impl_serialize();
-        if (serialize_result.fail()) {
-            std::cout << "Failed to serialize: " <<
-                static_cast<int>(serialize_result.status.value()) << std::endl;
-            return;
-        }
-
-        auto serialized_data = serialize_result.value;
-        print_hex(serialized_data, "Serialized Fixed Frame (Extended)");
-
-        // Create new frame and deserialize
         FixedFrame new_frame;
-        auto deserialize_result = new_frame.impl_deserialize(serialized_data);
-        if (deserialize_result.fail()) {
-            std::cout << "Failed to deserialize: " <<
-                static_cast<int>(deserialize_result.status.value()) << std::endl;
+        auto deserialize_result =
+            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+            buffer.size()));
+        if (!deserialize_result) {
+            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
             return;
         }
-
-        // Verify by serializing again
-        auto verify_result = new_frame.impl_serialize();
+        std::array<std::byte, 20> verify_buffer;
+        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+            verify_buffer.size()));
         if (verify_result.ok()) {
-            print_hex(verify_result.value, "Deserialized Fixed Frame (Extended)");
-            std::cout << "Roundtrip test: " << (serialized_data ==
-            verify_result.value ? "PASSED" : "FAILED") << std::endl;
+            print_hex(verify_buffer, "Deserialized Fixed Frame (Extended)");
+            std::cout << "Roundtrip test: " << (buffer ==
+            verify_buffer ? "PASSED" : "FAILED") << std::endl;
         }
-
     } catch (const std::exception& e) {
         std::cout << "Exception in fixed frame extended test: " << e.what() << std::endl;
     }
@@ -399,41 +253,38 @@ void test_fixed_frame_extended() {
  */
 void test_config_frame() {
     std::cout << "\n=== Configuration Frame ===\n";
-
     try {
-        ConfigFrame frame;
+        auto frame = USBCANBridge::make_config_frame()
+            .baud_rate(CANBaud::SPEED_125K)
+            .filter(0, 0)
+            .mode(CANMode::NORMAL)
+            .build();
 
-        // The config frame should already be initialized with default values
-        // We just need to serialize it to see the output
-
-        // Serialize the frame
-        auto serialize_result = frame.impl_serialize();
-        if (serialize_result.fail()) {
-            std::cout << "Failed to serialize: " <<
-                static_cast<int>(serialize_result.status.value()) << std::endl;
+        std::array<std::byte, 20> buffer;
+        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+            buffer.size()));
+        if (!serialize_result) {
+            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
             return;
         }
+        print_hex(buffer, "Serialized Config Frame");
 
-        auto serialized_data = serialize_result.value;
-        print_hex(serialized_data, "Serialized Config Frame");
-
-        // Create new frame and deserialize
         ConfigFrame new_frame;
-        auto deserialize_result = new_frame.impl_deserialize(serialized_data);
-        if (deserialize_result.fail()) {
-            std::cout << "Failed to deserialize: " <<
-                static_cast<int>(deserialize_result.status.value()) << std::endl;
+        auto deserialize_result =
+            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+            buffer.size()));
+        if (!deserialize_result) {
+            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
             return;
         }
-
-        // Verify by serializing again
-        auto verify_result = new_frame.impl_serialize();
+        std::array<std::byte, 20> verify_buffer;
+        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+            verify_buffer.size()));
         if (verify_result.ok()) {
-            print_hex(verify_result.value, "Deserialized Config Frame");
-            std::cout << "Roundtrip test: " << (serialized_data ==
-            verify_result.value ? "PASSED" : "FAILED") << std::endl;
+            print_hex(verify_buffer, "Deserialized Config Frame");
+            std::cout << "Roundtrip test: " << (buffer ==
+            verify_buffer ? "PASSED" : "FAILED") << std::endl;
         }
-
     } catch (const std::exception& e) {
         std::cout << "Exception in config frame test: " << e.what() << std::endl;
     }

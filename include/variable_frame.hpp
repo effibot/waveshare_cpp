@@ -1,86 +1,105 @@
 #pragma once
+
 #include "base_frame.hpp"
+#include "span_compat.hpp"
 
 namespace USBCANBridge {
     /**
      * @brief Variable frame implementation.
      *
      * This class represents a variable frame in the USBCANBridge library.
-     * It inherits from the BaseFrame class and provides specific functionality
-     * for variable frames, such as Type calculation and validation, and synchronization
-     * of DLC and data payload size.
-     * The structure is the following:
+     * It inherits from BaseFrame and provides specific functionality for
+     * variable-size frames (5-15 bytes) with dynamic CAN ID and data payload.
      *
-     * `[START][TYPE][ID0-ID3][DATA0-DATA7][END]`
+     * Features:
+     * - Variable size (5-15 bytes) with dynamic allocation
+     * - Support for standard (11-bit) and extended (29-bit) CAN IDs
+     * - Variable data payload (0-8 bytes)
+     * - Type-safe operations through BaseFrame interface
+     * - No checksum - uses END byte terminator
      *
-     * @note `compute_type()` in `common.hpp` for details on Type field calculation.
-     * @note BaseFrame for common frame functionalities.
-     * @note FrameTraits for compile-time frame structure information.
-     * @note VariableFrame doesn't use a checksum field, but has a terminating END byte.
+     * Structure: [START][TYPE][ID0-ID3][DATA0-DATA7][END]
      */
     class VariableFrame : public BaseFrame<VariableFrame> {
-        protected:
-            using PayloadPair = Traits::PayloadPair;
-            using IDPair = Traits::IDPair;
-            alignas(8) mutable StorageType storage_;
-            // cached id size value
-            mutable size_t id_size_ = 0;
         private:
+            using Traits = frame_traits_t<VariableFrame>;
+            using Layout = layout_t<VariableFrame>;
+
+            mutable typename Traits::StorageType storage_;
+
+            // Cache for frame properties
+            mutable bool is_extended_id_ = false;
+            mutable std::size_t data_length_ = 0;
+
             /**
-             * @brief Initialize fixed fields of the variable frame.
-             * @see VariableSizeIndex in common.hpp for field details.
+             * @brief Initialize fixed fields of the frame.
              */
             void init_fixed_fields();
 
+            /**
+             * @brief Update the frame size based on current ID type and data length.
+             */
+            void update_frame_structure();
+
         public:
-            // <<< Constructors
             /**
              * @brief Default constructor.
-             *
-             * Initializes a VariableFrame object with default values.
+             * Initializes a VariableFrame with minimum size and proper field setup.
              */
-            VariableFrame() : BaseFrame() {
-                init_fixed_fields();
-            }
+            VariableFrame();
+
             ~VariableFrame() = default;
-            // >>> Constructors
 
-            // ? Base Frame Protocol Interface
+            // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
 
+            // Universal operations
+            Result<void> impl_serialize(span<std::byte> buffer) const;
+            Result<void> impl_deserialize(span<const std::byte> data);
+            Result<bool> impl_validate() const;
+            span<const std::byte> impl_get_raw_data() const;
             Result<std::size_t> impl_size() const;
-            Result<Status> impl_clear();
-            Result<Type> impl_get_type() const;
-            Result<Status> impl_set_type(const Type& type) = delete; // Disabled for VariableFrame
-            Result<Status> impl_set_type(const FrameFmt frame_fmt,
-                const FrameType frame_type, const std::byte dlc);
-            Result<FrameType> impl_get_frame_type() const;
-            Result<Status> impl_set_frame_type(const FrameType& frame_type);
-            Result<FrameFmt> impl_get_frame_fmt() const;
-            Result<Status> impl_set_frame_fmt(const FrameFmt& frame_fmt);
+            Result<void> impl_clear();
 
-            // * Wire protocol serialization/deserialization
-            Result<StorageType> impl_serialize() const;
-            Result<Status> impl_deserialize(const std::byte* data, std::size_t size);
-
-            // * ID accessors
-            Result<IDPair> impl_get_id() const;
-            Result<Status> impl_set_id(const IDPair& id);
-
-            // * DLC accessors
+            // Data frame operations
+            Result<void> impl_set_can_id(uint32_t id);
+            Result<uint32_t> impl_get_can_id() const;
+            Result<void> impl_set_data(span<const std::byte> data);
+            span<const std::byte> impl_get_data() const;
+            Result<void> impl_set_dlc(std::byte dlc);
             Result<std::byte> impl_get_dlc() const;
-            Result<Status> impl_set_dlc(const std::byte& dlc);
-            Result<PayloadPair> impl_get_data() const;
-            Result<Status> impl_set_data(const PayloadPair& new_data);
-            // * Validation methods
-            Result<Status> impl_validate() const;
-            // ? Individual field validation methods
-            Result<Status> validate_start_byte() const;
-            Result<Status> validate_frame_type(const FrameType& frame_type) const;
-            Result<Status> validate_frame_fmt(const FrameFmt& frame_fmt) const;
-            Result<Status> validate_id_size(const IDPair& id) const;
-            Result<Status> validate_dlc(const std::byte& dlc) const;
-            Result<Status> validate_dlc(const std::size_t& dlc) const;
-            Result<Status> validate_end_byte() const;
 
-    }; // class VariableFrame
-} // namespace USBCANBridge
+            // ==== VARIABLE FRAME SPECIFIC OPERATIONS ====
+
+            /**
+             * @brief Check if frame uses extended CAN ID.
+             */
+            bool is_extended_id() const;
+
+            /**
+             * @brief Get current data length.
+             */
+            std::size_t get_data_length() const;
+
+            /**
+             * @brief Get the type byte (includes frame type, format, and DLC).
+             */
+            std::byte get_type_byte() const;
+
+            /**
+             * @brief Set the type byte.
+             */
+            Result<void> set_type_byte(std::byte type_byte);
+
+            // ==== UTILITIES ====
+
+            /**
+             * @brief Calculate the expected frame size for given parameters.
+             */
+            static std::size_t calculate_frame_size(bool extended_id, std::size_t data_length);
+
+            /**
+             * @brief Validate frame structure without checksum.
+             */
+            bool validate_structure() const;
+    };
+}

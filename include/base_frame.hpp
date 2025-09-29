@@ -1,19 +1,27 @@
 #pragma once
-#include <numeric>
-#include <algorithm>
 
 #include "common.hpp"
-#include "error.hpp"
 #include "result.hpp"
 #include "frame_traits.hpp"
+#include "span_compat.hpp"
+#include <type_traits>
 
 namespace USBCANBridge {
+
+/**
+ * @brief CRTP base class providing unified interface with type-safe operations.
+ *
+ * This class serves as the main entry point for the library while using SFINAE
+ * to ensure only appropriate operations are available for each frame type.
+ * All operations are dispatched to derived implementations at compile-time.
+ */
     template<typename Derived>
     class BaseFrame {
         protected:
-            // bring traits into scope
+            // Bring traits into scope
             using Traits = frame_traits_t<Derived>;
             using StorageType = typename Traits::StorageType;
+
         private:
             // Access to the concrete Derived class
             Derived& derived() {
@@ -24,127 +32,196 @@ namespace USBCANBridge {
             }
 
         public:
-            // default constructor
-            BaseFrame() {
-            };
+            // Default constructor
+            BaseFrame() = default;
             ~BaseFrame() = default;
 
             // Disable copy/assignment to avoid slicing
             BaseFrame(const BaseFrame&) = delete;
             BaseFrame& operator=(const BaseFrame&) = delete;
+
             // Enable move semantics
             BaseFrame(BaseFrame&&) = default;
             BaseFrame& operator=(BaseFrame&&) = default;
 
 
-            // * Public interface methods calling the implementation in Derived class * //
-            /**
-             * @brief Get the size of the frame.
-             *
-             * @return Result<std::size_t>
-             */
-            Result<std::size_t> size() const {
-                return derived().impl_size();
-            }
-            /**
-             * @brief Clear the frame to default state.
-             *
-             * @return Result<Status>
-             */
-            Result<Status> clear() {
-                return derived().impl_clear();
-            }
-            /**
-             * @brief Retrieves the type of the frame
-             * @see common.hpp for Type enum details
-             *
-             * @return Result<Type>
-             */
-            Result<Type> get_type() const {
-                return derived().impl_get_type();
-            }
-            /**
-             * @brief Set the packet type byte.
-             * @see common.hpp for Type enum details
-             * @param type
-             * @return Result<Status>
-             */
-            Result<Status> set_type(const Type& type) {
-                return derived().impl_set_type(type);
-            }
-            /**
-             * @brief Get the frame type (e.g., standard or extended).
-             * @see common.hpp for FrameType enum details
-             * @return Result<FrameType>
-             */
-            Result<FrameType> get_frame_type() const {
-                return derived().impl_get_frame_type();
-            }
-            /**
-             * @brief Set the frame type of the packet.
-             * @see common.hpp for FrameType enum details
-             * @param frame_type
-             * @return Result<Status>
-             */
-            Result<Status> set_frame_type(const FrameType& frame_type) {
-                return derived().impl_set_frame_type(frame_type);
-            }
-            /**
-             * @brief Get the frame format of the packet.
-             * @see common.hpp for FrameFmt enum details
-             * @return Result<FrameFmt>
-             */
-            Result<FrameFmt> get_frame_fmt() const {
-                return derived().impl_get_frame_fmt();
-            }
-            /**
-             * @brief Set the frame format of the packet.
-             * @see common.hpp for FrameFmt enum details
-             * @param frame_fmt
-             * @return Result<Status>
-             */
-            Result<Status> set_frame_fmt(const FrameFmt& frame_fmt) {
-                return derived().impl_set_frame_fmt(frame_fmt);
-            }
-
-            // >>> Fields setters/getters
+            // ==== UNIVERSAL OPERATIONS - Available for ALL frame types ====
 
             /**
-             * @brief Prepares the frame for wire protocol serialization.
-             * The implementation in the derived class must ensure that the frame is valid and return a copy of the internal storage.
-             * @return Result<StorageType>
+             * @brief Serialize frame to byte buffer.
              */
-            Result<StorageType> serialize() const {
-                return derived().impl_serialize();
+            Result<void> serialize(span<std::byte> buffer) const {
+                return derived().impl_serialize(buffer);
             }
+
             /**
-             * @brief Reconstructs the frame from raw wire protocol data.
-             * The implementation in the derived class must validate the input data and populate the internal storage.
-             * @param data
-             * @return Result<Status>
+             * @brief Deserialize frame from byte buffer.
              */
-            Result<Status> deserialize(const StorageType& data) {
+            Result<void> deserialize(span<const std::byte> data) {
                 return derived().impl_deserialize(data);
             }
+
             /**
-             * @brief Generic validation method for the entire frame.
-             *
-             * @return Result<Status>
+             * @brief Validate frame structure and content.
              */
-            Result<Status> validate() const {
+            Result<bool> validate() const {
                 return derived().impl_validate();
             }
 
             /**
-             * @brief Dumps the frame's content to the provided output stream in a human-readable format.
-             * This method is useful for debugging and logging purposes.
-             * It will output all relevant fields of the frame, including ID, payload, type, and any other metadata.
-             * The format of the output is designed to be easily interpretable by developers.
-             * @param os The output stream to which the frame's content will be written.
-             * @return Result<StorageType> containing the raw storage data if successful, or an error otherwise.
+             * @brief Get raw frame data as read-only byte span.
              */
-            Result<StorageType> dump(std::ostream& os) const {
-                return derived().impl_dump(os);
+            span<const std::byte> get_raw_data() const {
+                return derived().impl_get_raw_data();
+            }
+
+            /**
+             * @brief Get frame size in bytes.
+             */
+            Result<std::size_t> size() const {
+                return derived().impl_size();
+            }
+
+            /**
+             * @brief Clear frame to default state.
+             */
+            Result<void> clear() {
+                return derived().impl_clear();
+            }
+
+            // ==== DATA FRAME OPERATIONS - Only available for FixedFrame and VariableFrame ====
+
+            /**
+             * @brief Set CAN ID (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<void> >
+            set_can_id(uint32_t id) {
+                return derived().impl_set_can_id(id);
+            }
+
+            /**
+             * @brief Get CAN ID (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<uint32_t> >
+            get_can_id() const {
+                return derived().impl_get_can_id();
+            }
+
+            /**
+             * @brief Set data payload (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<void> >
+            set_data(span<const std::byte> data) {
+                return derived().impl_set_data(data);
+            }
+
+            /**
+             * @brief Get data payload (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
+            get_data() const {
+                return derived().impl_get_data();
+            }
+
+            /**
+             * @brief Set DLC (Data Length Code) (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<void> >
+            set_dlc(std::byte dlc) {
+                return derived().impl_set_dlc(dlc);
+            }
+
+            /**
+             * @brief Get DLC (Data Length Code) (only available for data frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<std::byte> >
+            get_dlc() const {
+                return derived().impl_get_dlc();
+            }
+
+            // ==== CONFIG FRAME OPERATIONS - Only available for ConfigFrame ====
+
+            /**
+             * @brief Set baud rate (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<void> >
+            set_baud_rate(CANBaud rate) {
+                return derived().impl_set_baud_rate(rate);
+            }
+
+            /**
+             * @brief Get baud rate (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<CANBaud> >
+            get_baud_rate() const {
+                return derived().impl_get_baud_rate();
+            }
+
+            /**
+             * @brief Set ID filter (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<void> >
+            set_filter(uint32_t filter, uint32_t mask) {
+                return derived().impl_set_filter(filter, mask);
+            }
+
+            /**
+             * @brief Set operating mode (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<void> >
+            set_mode(CANMode mode) {
+                return derived().impl_set_mode(mode);
+            }
+
+            // ==== FIXED FRAME SPECIFIC OPERATIONS ====
+
+            /**
+             * @brief Set frame type (only available for FixedFrame).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<std::is_same_v<T, FixedFrame>, Result<void> >
+            set_frame_type(FrameType type) {
+                return derived().impl_set_frame_type(type);
+            }
+
+            /**
+             * @brief Verify checksum (only available for FixedFrame).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<std::is_same_v<T, FixedFrame>, bool>
+            verify_checksum() const {
+                return derived().impl_verify_checksum();
+            }
+
+            // ==== VARIABLE FRAME SPECIFIC OPERATIONS ====
+
+            /**
+             * @brief Set extended ID flag (only available for VariableFrame).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<std::is_same_v<T, VariableFrame>, Result<void> >
+            set_extended_id(bool extended) {
+                return derived().impl_set_extended_id(extended);
+            }
+
+            /**
+             * @brief Check if using extended ID (only available for VariableFrame).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<std::is_same_v<T, VariableFrame>, bool>
+            is_extended_id() const {
+                return derived().impl_is_extended_id();
             }
     };
+
 } // namespace USBCANBridge
