@@ -30,7 +30,7 @@ namespace USBCANBridge {
             /**
              * @brief Initialize fixed fields of the frame.
              */
-            void init_fixed_fields();
+            void impl_init_fixed_fields();
 
             /**
              * @brief Calculate and cache checksum if dirty.

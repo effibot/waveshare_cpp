@@ -23,6 +23,9 @@
 #include <string>
 #include <array>
 
+#include "span_compat.hpp"
+#include "frame_traits.hpp"
+
 /**
  * @namespace USBCANBridge
  * @brief Namespace containing all USB-CAN bridge related functionality.
@@ -460,4 +463,21 @@ namespace USBCANBridge {
         return static_cast<std::byte>(type);
     }
 
+    /**
+     * @brief Utility function to compute checksum for a byte array.
+     * The checksum has a meaning only within the context of a ConfigFrame or a FixedFrame.
+     * It is computed as the sum (or XOR) of all bytes from the Type to the Reserved byte,
+     * The result is taken as the lower 8 bits of the sum.
+     * @param data The byte array to compute the checksum for
+     * @return std::byte The computed checksum byte
+     */
+    template<typename T>
+    std::byte<
+    compute_checksum(const storage_t<T>& data) {
+        std::uint8_t sum = 0;
+        for (const auto& byte : data) {
+            sum += static_cast<std::uint8_t>(byte);
+        }
+        return static_cast<std::byte>(sum & 0xFF);
+    }
 } // namespace USBCANBridge

@@ -4,10 +4,10 @@
 namespace USBCANBridge {
 
     VariableFrame::VariableFrame() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
     }
 
-    void VariableFrame::init_fixed_fields() {
+    void VariableFrame::impl_init_fixed_fields() {
         // Start with minimum frame size (START + TYPE + 2-byte ID + END = 5 bytes)
         storage_.resize(Traits::MIN_FRAME_SIZE);
         std::fill(storage_.begin(), storage_.end(), std::byte{0});
@@ -98,7 +98,7 @@ namespace USBCANBridge {
     }
 
     Result<void> VariableFrame::impl_clear() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
         return Result<void>::success("clear");
     }
 

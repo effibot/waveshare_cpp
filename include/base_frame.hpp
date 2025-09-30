@@ -20,7 +20,7 @@ namespace USBCANBridge {
         protected:
             // Bring traits into scope
             using Traits = frame_traits_t<Derived>;
-            using StorageType = typename Traits::StorageType;
+            using StorageType = storage_t<Derived>;
 
         private:
             // Access to the concrete Derived class
@@ -30,19 +30,17 @@ namespace USBCANBridge {
             const Derived& derived() const {
                 return static_cast<const Derived&>(*this);
             }
+            // Initialize fixed fields
+            void init_fixed_fields() {
+                if constexpr (std::is_same_v<Derived, FixedFrame> ) {
+                    derived().impl_init_fixed_fields();
+                }
+            }
 
         public:
             // Default constructor
             BaseFrame() = default;
             ~BaseFrame() = default;
-
-            // Disable copy/assignment to avoid slicing
-            BaseFrame(const BaseFrame&) = delete;
-            BaseFrame& operator=(const BaseFrame&) = delete;
-
-            // Enable move semantics
-            BaseFrame(BaseFrame&&) = default;
-            BaseFrame& operator=(BaseFrame&&) = default;
 
 
             // ==== UNIVERSAL OPERATIONS - Available for ALL frame types ====
@@ -170,8 +168,33 @@ namespace USBCANBridge {
              */
             template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
-            set_filter(uint32_t filter, uint32_t mask) {
-                return derived().impl_set_filter(filter, mask);
+            set_filter(uint32_t filter) {
+                return derived().impl_set_filter(filter);
+            }
+            /**
+             * @brief Get ID filter (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<uint32_t> >
+            get_filter() const {
+                return derived().impl_get_filter();
+            }
+            /**
+             * @brief Set ID mask (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<void> >
+            set_mask(uint32_t mask) {
+                return derived().impl_set_mask(mask);
+            }
+
+            /**
+             * @brief Get ID mask (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<uint32_t> >
+            get_mask() const {
+                return derived().impl_get_mask();
             }
 
             /**

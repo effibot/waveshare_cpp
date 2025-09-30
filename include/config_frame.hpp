@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base_frame.hpp"
+#include "frame_traits.hpp"
 #include "span_compat.hpp"
 
 namespace USBCANBridge {
@@ -22,16 +23,15 @@ namespace USBCANBridge {
             using Traits = frame_traits_t<ConfigFrame>;
             using Layout = layout_t<ConfigFrame>;
 
-            alignas(4) mutable typename Traits::StorageType storage_;
+            alignas(8) mutable storage_t<ConfigFrame> storage_;
 
             // Optimization: cache checksum calculation
             mutable bool checksum_dirty_ = true;
-            mutable std::byte cached_checksum_ = std::byte{0};
 
             /**
              * @brief Initialize fixed fields of the frame.
              */
-            void init_fixed_fields();
+            void impl_init_fixed_fields();
 
             /**
              * @brief Calculate and cache checksum if dirty.

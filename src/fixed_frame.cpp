@@ -4,10 +4,10 @@
 namespace USBCANBridge {
 
     FixedFrame::FixedFrame() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
     }
 
-    void FixedFrame::init_fixed_fields() {
+    void FixedFrame::impl_init_fixed_fields() {
         storage_.fill(std::byte{0});
 
         // Set up standard frame structure
@@ -93,7 +93,7 @@ namespace USBCANBridge {
     }
 
     Result<void> FixedFrame::impl_clear() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
         return Result<void>::success("clear");
     }
 

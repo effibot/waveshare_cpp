@@ -34,7 +34,7 @@ namespace USBCANBridge {
             /**
              * @brief Initialize fixed fields of the frame.
              */
-            void init_fixed_fields();
+            void impl_init_fixed_fields();
 
             /**
              * @brief Update the frame size based on current ID type and data length.

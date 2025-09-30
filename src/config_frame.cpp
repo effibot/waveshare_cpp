@@ -4,11 +4,11 @@
 namespace USBCANBridge {
 
     ConfigFrame::ConfigFrame() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
     }
 
-    void ConfigFrame::init_fixed_fields() {
-        storage_.fill(std::byte{0});
+    void ConfigFrame::impl_init_fixed_fields() {
+        std::fill(storage_.begin(), storage_.end(), std::byte{0});
 
         // Set up configuration frame structure
         storage_[Layout::START_OFFSET] = to_byte(Constants::START_BYTE);
@@ -36,14 +36,9 @@ namespace USBCANBridge {
 
     void ConfigFrame::update_checksum() const {
         if (checksum_dirty_) {
-            std::byte checksum{0};
-            for (std::size_t i = 0; i < Layout::CHECKSUM_OFFSET; ++i) {
-                checksum ^= storage_[i];
-            }
-            cached_checksum_ = checksum;
-            storage_[Layout::CHECKSUM_OFFSET] = cached_checksum_;
-            checksum_dirty_ = false;
+            storage_[Layout::CHECKSUM_OFFSET] = compute_checksum<ConfigFrame>(storage_);
         }
+        checksum_dirty_ = false;
     }
 
     // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
@@ -78,7 +73,6 @@ namespace USBCANBridge {
         }
 
         checksum_dirty_ = false;
-        cached_checksum_ = storage_[Layout::CHECKSUM_OFFSET];
 
         return Result<void>::success("deserialize");
     }
@@ -105,7 +99,7 @@ namespace USBCANBridge {
     }
 
     Result<void> ConfigFrame::impl_clear() {
-        init_fixed_fields();
+        impl_init_fixed_fields();
         return Result<void>::success("clear");
     }
 
@@ -176,11 +170,7 @@ namespace USBCANBridge {
     }
 
     bool ConfigFrame::impl_verify_checksum() const {
-        std::byte calculated{0};
-        for (std::size_t i = 0; i < Layout::CHECKSUM_OFFSET; ++i) {
-            calculated ^= storage_[i];
-        }
-        return calculated == storage_[Layout::CHECKSUM_OFFSET];
+        return validate_checksum(storage_.data(), storage_.size());
     }
 
     // ==== CHECKSUM UTILITIES ====
@@ -194,16 +184,6 @@ namespace USBCANBridge {
         return static_cast<uint8_t>(checksum);
     }
 
-    bool ConfigFrame::validate_checksum(const std::byte* data, std::size_t size) {
-        if (size < Traits::FRAME_SIZE) {
-            return false;
-        }
-
-        std::byte calculated{0};
-        for (std::size_t i = 0; i < Layout::CHECKSUM_OFFSET; ++i) {
-            calculated ^= data[i];
-        }
-        return calculated == data[Layout::CHECKSUM_OFFSET];
-    }
+    
 
 } // namespace USBCANBridge

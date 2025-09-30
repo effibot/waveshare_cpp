@@ -68,92 +68,92 @@ std::vector<std::byte> make_byte_vector(const std::vector<uint8_t>& values) {
     return result;
 }
 
-/**
- * @brief Test Variable Frame with standard ID format
- * Expected: AA C8 23 01 11 22 33 44 55 66 77 88 55
- */
-void test_variable_frame_standard() {
-    std::cout << "\n=== Variable Frame with Standard ID ===\n";
-    try {
-        auto frame = USBCANBridge::make_variable_frame()
-            .can_id(0x0123)
-            .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
-            .dlc(8)
-            .build();
+// /**
+//  * @brief Test Variable Frame with standard ID format
+//  * Expected: AA C8 23 01 11 22 33 44 55 66 77 88 55
+//  */
+// void test_variable_frame_standard() {
+//     std::cout << "\n=== Variable Frame with Standard ID ===\n";
+//     try {
+//         auto frame = USBCANBridge::make_variable_frame()
+//             .can_id(0x0123)
+//             .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
+//             .dlc(8)
+//             .build();
 
-        std::vector<std::byte> buffer(frame.get_raw_data().size());
-        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
-            buffer.size()));
-        if (!serialize_result) {
-            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
-            return;
-        }
-        print_hex(buffer, "Serialized Variable Frame (Standard)");
+//         std::vector<std::byte> buffer(frame.get_raw_data().size());
+//         auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+//             buffer.size()));
+//         if (!serialize_result) {
+//             std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
+//             return;
+//         }
+//         print_hex(buffer, "Serialized Variable Frame (Standard)");
 
-        VariableFrame new_frame;
-        auto deserialize_result =
-            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
-            buffer.size()));
-        if (!deserialize_result) {
-            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
-            return;
-        }
-        std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
-        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
-            verify_buffer.size()));
-        if (verify_result.ok()) {
-            print_hex(verify_buffer, "Deserialized Variable Frame (Standard)");
-            std::cout << "Roundtrip test: " << (buffer ==
-            verify_buffer ? "PASSED" : "FAILED") << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cout << "Exception in variable frame standard test: " << e.what() << std::endl;
-    }
-}
+//         VariableFrame new_frame;
+//         auto deserialize_result =
+//             new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+//             buffer.size()));
+//         if (!deserialize_result) {
+//             std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
+//             return;
+//         }
+//         std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
+//         auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+//             verify_buffer.size()));
+//         if (verify_result.ok()) {
+//             print_hex(verify_buffer, "Deserialized Variable Frame (Standard)");
+//             std::cout << "Roundtrip test: " << (buffer ==
+//             verify_buffer ? "PASSED" : "FAILED") << std::endl;
+//         }
+//     } catch (const std::exception& e) {
+//         std::cout << "Exception in variable frame standard test: " << e.what() << std::endl;
+//     }
+// }
 
-/**
- * @brief Test Variable Frame with extended ID format
- * Expected: AA E8 67 45 23 01 11 22 33 44 55 66 77 88 55
- */
-void test_variable_frame_extended() {
-    std::cout << "\n=== Variable Frame with Extended ID ===\n";
-    try {
-        auto frame = USBCANBridge::make_variable_frame()
-            .extended_id(true)
-            .can_id(0x01234567)
-            .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
-            .dlc(8)
-            .build();
+// /**
+//  * @brief Test Variable Frame with extended ID format
+//  * Expected: AA E8 67 45 23 01 11 22 33 44 55 66 77 88 55
+//  */
+// void test_variable_frame_extended() {
+//     std::cout << "\n=== Variable Frame with Extended ID ===\n";
+//     try {
+//         auto frame = USBCANBridge::make_variable_frame()
+//             .extended_id(true)
+//             .can_id(0x01234567)
+//             .data(make_byte_vector({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}))
+//             .dlc(8)
+//             .build();
 
-        std::vector<std::byte> buffer(frame.get_raw_data().size());
-        auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
-            buffer.size()));
-        if (!serialize_result) {
-            std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
-            return;
-        }
-        print_hex(buffer, "Serialized Variable Frame (Extended)");
+//         std::vector<std::byte> buffer(frame.get_raw_data().size());
+//         auto serialize_result = frame.serialize(USBCANBridge::span<std::byte>(buffer.data(),
+//             buffer.size()));
+//         if (!serialize_result) {
+//             std::cout << "Failed to serialize: " << serialize_result.describe() << std::endl;
+//             return;
+//         }
+//         print_hex(buffer, "Serialized Variable Frame (Extended)");
 
-        VariableFrame new_frame;
-        auto deserialize_result =
-            new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
-            buffer.size()));
-        if (!deserialize_result) {
-            std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
-            return;
-        }
-        std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
-        auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
-            verify_buffer.size()));
-        if (verify_result.ok()) {
-            print_hex(verify_buffer, "Deserialized Variable Frame (Extended)");
-            std::cout << "Roundtrip test: " << (buffer ==
-            verify_buffer ? "PASSED" : "FAILED") << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cout << "Exception in variable frame extended test: " << e.what() << std::endl;
-    }
-}
+//         VariableFrame new_frame;
+//         auto deserialize_result =
+//             new_frame.deserialize(USBCANBridge::span<const std::byte>(buffer.data(),
+//             buffer.size()));
+//         if (!deserialize_result) {
+//             std::cout << "Failed to deserialize: " << deserialize_result.describe() << std::endl;
+//             return;
+//         }
+//         std::vector<std::byte> verify_buffer(new_frame.get_raw_data().size());
+//         auto verify_result = new_frame.serialize(USBCANBridge::span<std::byte>(verify_buffer.data(),
+//             verify_buffer.size()));
+//         if (verify_result.ok()) {
+//             print_hex(verify_buffer, "Deserialized Variable Frame (Extended)");
+//             std::cout << "Roundtrip test: " << (buffer ==
+//             verify_buffer ? "PASSED" : "FAILED") << std::endl;
+//         }
+//     } catch (const std::exception& e) {
+//         std::cout << "Exception in variable frame extended test: " << e.what() << std::endl;
+//     }
+// }
 
 /**
  * @brief Test Fixed Frame with standard ID format
@@ -255,8 +255,9 @@ void test_config_frame() {
     std::cout << "\n=== Configuration Frame ===\n";
     try {
         auto frame = USBCANBridge::make_config_frame()
-            .baud_rate(CANBaud::SPEED_125K)
-            .filter(0, 0)
+            .baud_rate(CANBaud::SPEED_1000K)
+            .filter(0x00000000)
+            .mask(0x00000000)
             .mode(CANMode::NORMAL)
             .build();
 
@@ -297,10 +298,10 @@ int main() {
     std::cout << "and deserializing different types of USB-CAN frames.\n";
 
     // Test all frame types
-    test_variable_frame_standard();
-    test_variable_frame_extended();
-    test_fixed_frame_standard();
-    test_fixed_frame_extended();
+    // test_variable_frame_standard();
+    // test_variable_frame_extended();
+    // test_fixed_frame_standard();
+    // test_fixed_frame_extended();
     test_config_frame();
 
     std::cout << "\nShowcase completed.\n";

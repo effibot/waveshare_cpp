@@ -49,11 +49,12 @@
 
 #pragma once
 
+#include "span_compat.hpp"
 #include <array>
 #include <cstddef>
 #include <type_traits>
 #include <vector>
-
+#include <boost/core/span.hpp>
 /**
  * @namespace USBCANBridge
  * @brief Namespace containing all USB-CAN bridge related functionality.
@@ -131,7 +132,7 @@ namespace USBCANBridge {
     struct FrameTraits<VariableFrame> {
         static constexpr std::size_t MAX_FRAME_SIZE = 15;
         static constexpr std::size_t MIN_FRAME_SIZE = 5;
-        using StorageType = std::vector<std::byte>;
+        using StorageType = boost::span<std::byte>;
 
         /**
          * @brief Dynamic layout with helper functions for runtime calculations.
@@ -204,11 +205,28 @@ namespace USBCANBridge {
     struct is_config_frame : std::bool_constant<std::is_same_v<T, ConfigFrame> > {};
 
     template<typename T>
+    struct is_variable_frame : std::bool_constant<std::is_same_v<T, VariableFrame> > {};
+
+    template<typename T>
+    struct is_fixed_frame : std::bool_constant<std::is_same_v<T, FixedFrame> > {};
+
+    template<typename T>
+    struct has_checksum : std::bool_constant<
+            std::is_same_v<T, FixedFrame> || std::is_same_v<T, ConfigFrame>
+        > {};
+
+    template<typename T>
     inline constexpr bool is_data_frame_v = is_data_frame<T>::value;
 
     template<typename T>
     inline constexpr bool is_config_frame_v = is_config_frame<T>::value;
 
+    template<typename T>
+    inline constexpr bool is_variable_frame_v = is_variable_frame<T>::value;
 
+    template<typename T>
+    inline constexpr bool is_fixed_frame_v = is_fixed_frame<T>::value;
 
+    template<typename T>
+    inline constexpr bool has_checksum_v = has_checksum<T>::value;
 } // namespace USBCANBridge

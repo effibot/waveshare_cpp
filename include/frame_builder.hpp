@@ -116,8 +116,20 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, FrameBuilder&>
-            filter(uint32_t filter, uint32_t mask) {
-                auto result = frame_.set_filter(filter, mask);
+            filter(uint32_t filter) {
+                auto result = frame_.set_filter(filter);
+                if (!result) {
+                    throw std::runtime_error("FrameBuilder: " + result.describe());
+                }
+                return *this;
+            }
+            /**
+             * @brief Set ID mask (only available for config frames).
+             */
+            template<typename T = Frame>
+            std::enable_if_t<is_config_frame_v<T>, FrameBuilder&>
+            mask(uint32_t mask) {
+                auto result = frame_.set_mask(mask);
                 if (!result) {
                     throw std::runtime_error("FrameBuilder: " + result.describe());
                 }
