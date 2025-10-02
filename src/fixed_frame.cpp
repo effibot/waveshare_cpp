@@ -15,7 +15,7 @@ namespace USBCANBridge {
         storage_[Layout::HEADER_OFFSET] = to_byte(Constants::MSG_HEADER);
         storage_[Layout::TYPE_OFFSET] = to_byte(Type::DATA_FIXED);
         storage_[Layout::FRAME_TYPE_OFFSET] = to_byte(FrameType::STD_FIXED);
-        storage_[Layout::FORMAT_OFFSET] = to_byte(FrameFmt::DATA_FIXED);
+        storage_[Layout::FORMAT_OFFSET] = to_byte(FrameFormat::DATA_FIXED);
         // * [ID (4 bytes) | DLC (1 byte) | Data (8 bytes) | Checksum (1 byte) ]
         // * Are initialized with zero-fill above
         checksum_dirty_ = true;

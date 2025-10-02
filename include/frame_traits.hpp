@@ -116,6 +116,7 @@ namespace USBCANBridge {
             static constexpr std::size_t DLC_OFFSET = 9;
             static constexpr std::size_t DATA_OFFSET = 10;
             static constexpr std::size_t DATA_SIZE = 8;
+            static constexpr std::size_t RESERVED_OFFSET = 18;
             static constexpr std::size_t CHECKSUM_OFFSET = 19;
         };
     };
@@ -132,6 +133,11 @@ namespace USBCANBridge {
     struct FrameTraits<VariableFrame> {
         static constexpr std::size_t MAX_FRAME_SIZE = 15;
         static constexpr std::size_t MIN_FRAME_SIZE = 5;
+        static constexpr std::size_t MAX_DATA_SIZE = 8;
+        static constexpr std::size_t MIN_DATA_SIZE = 0;
+        static constexpr std::size_t MAX_ID_SIZE = 4; // Extended ID
+        static constexpr std::size_t MIN_ID_SIZE = 2; // Standard ID
+
         using StorageType = std::vector<std::byte>;
 
         /**

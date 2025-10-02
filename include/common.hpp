@@ -182,7 +182,7 @@ namespace USBCANBridge {
  * transmission request frames (requesting data from another node). The format
  * also indicates whether using fixed or variable frame structure.
  */
-    enum class FrameFmt : std::uint8_t {
+    enum class FrameFormat : std::uint8_t {
         DATA_FIXED = 0x01, ///< Data frame with fixed structure (carries data payload)
         REMOTE_FIXED = 0x02, ///< Remote transmission request with fixed structure
         DATA_VAR = 0,  ///< Data frame with variable structure
@@ -388,7 +388,7 @@ namespace USBCANBridge {
      * @param dlc Data Length Code (0-8)
      * @return Type The computed Type byte for VariableFrame
      */
-    constexpr std::byte compute_type(const FrameType frame_type, const FrameFmt frame_fmt,
+    constexpr std::byte compute_type(const FrameType frame_type, const FrameFormat frame_fmt,
         const std::byte dlc) {
         std::uint8_t type = 0xC0; // Start with bits 7-6 set to `11` for VariableFrame
         type |= (to_size_t(frame_type) & 0x01) << 5; // Set bit 5 for Frame Type

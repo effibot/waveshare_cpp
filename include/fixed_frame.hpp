@@ -1,102 +1,53 @@
 #pragma once
 
-#include "base_frame.hpp"
-#include "span_compat.hpp"
+#include "interface/data.hpp"
+#include "interface/checksum.hpp"
 
 namespace USBCANBridge {
-    /**
-     * @brief Fixed frame implementation.
-     *
-     * This class represents a fixed-size frame in the USBCANBridge library.
-     * It inherits from BaseFrame and provides specific functionality for
-     * 20-byte fixed frames with checksum validation and CAN data transport.
-     *
-     * Features:
-     * - 20-byte fixed size with compile-time layout
-     * - Automatic checksum calculation and validation
-     * - CAN ID and data payload support
-     * - Type-safe operations through BaseFrame interface
-     */
-    class FixedFrame : public BaseFrame<FixedFrame> {
-        private:
-            using Traits = frame_traits_t<FixedFrame>;
-            using Layout = layout_t<FixedFrame>;
 
-            alignas(4) mutable typename Traits::StorageType storage_;
+    class FixedFrame :
+        public DataInterface<FixedFrame>,
+        public ChecksumInterface<FixedFrame> {
+        // * Alias for traits
+        using traits = frame_traits_t<FixedFrame>;
+        using layout = layout_t<FixedFrame>;
+        using storage = storage_t<FixedFrame>;
 
-            // Optimization: cache checksum calculation
-            mutable bool checksum_dirty_ = true;
-            mutable std::byte cached_checksum_ = std::byte{0};
+        protected:
             /**
-             * @brief Initialize fixed fields of the frame.
+             * @brief Initialize the frame fields.
+             * This is called during construction to set up the frame.
+             * @see File: include/protocol.hpp for constant definitions.
+             * @see File: README.md for frame structure details.
+             * @note For a FixedFrame, the following fields are initialized:
+             * - `[START]` = `Constants::START_BYTE`
+             * - `[HEADER]` = `Constants::HEADER`
+             * - `[TYPE]` = Type::DATA_FIXED
+             * - `[FRAME_TYPE]` = `FrameType::STD_FIXED`
+             * - `[FRAME_FMT]` = `FrameFmt::DATA_FIXED`
+             * - `[RESERVED]` = `Constants::RESERVED`
              */
-            void impl_init_fixed_fields();
-
-            /**
-             * @brief Calculate and cache checksum if dirty.
-             */
-            void update_checksum() const;
-
-        public:
-            /**
-             * @brief Default constructor.
-             * Initializes a FixedFrame with default values and proper field setup.
-             */
-            FixedFrame();
-
-            ~FixedFrame() = default;
-
-            // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
-
-            // Universal operations
-            Result<void> impl_serialize(span<std::byte> buffer) const;
-            Result<void> impl_deserialize(span<const std::byte> data);
-            Result<bool> impl_validate() const;
-            span<const std::byte> impl_get_raw_data() const;
-            Result<std::size_t> impl_size() const;
-            Result<void> impl_clear();
-
-            // Data frame operations
-            Result<void> impl_set_can_id(uint32_t id);
-            Result<uint32_t> impl_get_can_id() const;
-            Result<void> impl_set_data(span<const std::byte> data);
-            span<const std::byte> impl_get_data() const;
-            Result<void> impl_set_dlc(std::byte dlc);
-            Result<std::byte> impl_get_dlc() const;
-
-            // Fixed frame specific operations
-            Result<void> impl_set_frame_type(FrameType type);
-            bool impl_verify_checksum() const;
-
-            // ==== ADDITIONAL UTILITIES ====
-
-            /**
-             * @brief Check if frame uses extended CAN ID.
-             */
-            bool is_extended_id() const;
-
-            /**
-             * @brief Get frame type.
-             */
-            Result<FrameType> get_frame_type() const;
-
-            // ==== CHECKSUM UTILITIES ====
-
-            /**
-             * @brief Calculate checksum for raw byte data (static utility).
-             */
-            static uint8_t calculate_checksum(const std::byte* data, std::size_t size);
-
-            /**
-             * @brief Validate checksum in raw byte data (static utility).
-             */
-            static bool validate_checksum(const std::byte* data, std::size_t size);
-
-            /**
-             * @brief Force checksum recalculation.
-             */
-            void mark_dirty() const {
-                checksum_dirty_ = true;
+            void impl_init_fields() {
+                // * Set the Start byte
+                frame_storage_[layout::START_OFFSET] = to_byte(Constants::START_BYTE);
+                // * Set the Header byte
+                frame_storage_[layout::HEADER_OFFSET] = to_byte(Constants::HEADER);
+                // * Set the Type byte
+                frame_storage_[layout::TYPE_OFFSET] = to_byte(Type::DATA_FIXED);
+                // * Set the Frame Type byte
+                frame_storage_[layout::FRAME_TYPE_OFFSET] = to_byte(FrameType::STD_FIXED);
+                // * Set the Frame Format byte
+                frame_storage_[layout::FORMAT_OFFSET] = to_byte(FrameFormat::DATA_FIXED);
+                // * Set the Reserved byte
+                frame_storage_[layout::RESERVED_OFFSET] = to_byte(Constants::RESERVED);
+                return;
             }
+        public:
+            // * Constructors
+            FixedFrame() : DataInterface<FixedFrame>(), ChecksumInterface<FixedFrame>() {
+                // Initialize constant fields
+                impl_init_fields();
+            }
+
     };
 }

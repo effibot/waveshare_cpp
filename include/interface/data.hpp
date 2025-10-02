@@ -1,13 +1,27 @@
 #pragma once
-#include "frame_core.hpp"
+#include "core.hpp"
+#include "data_validator.hpp"
 #include <type_traits>
 
 namespace USBCANBridge {
     template<typename Derived>
-    class Data : public Core<Derived> {
+    class DataInterface : public CoreInterface<Derived>,
+        public DataValidator<Derived> {
+        // * Alias for traits
+        using traits = frame_traits_t<Derived>;
+        using layout = layout_t<Derived>;
+        using storage = storage_t<Derived>;
+
         // * Ensure that Derived is VariableFrame or FixedFrame
         static_assert(is_data_frame_v<Derived>,
             "Derived must be a data frame type");
+
+        protected:
+            // * Prevent this class from being instantiated directly
+            DataInterface() : CoreInterface<Derived>(), DataValidator<Derived>() {
+                static_assert(!std::is_same_v<Derived, DataInterface>,
+                    "DataInterface cannot be instantiated directly");
+            }
 
 
         // === Utility Methods ===
@@ -23,8 +37,8 @@ namespace USBCANBridge {
                 if (!fmt_res) {
                     return fmt_res.error();
                 }
-                return fmt_res.value() == FrameFmt::REMOTE_FIXED ||
-                       fmt_res.value() == FrameFmt::REMOTE_VARIABLE;
+                return fmt_res.value() == FrameFormat::REMOTE_FIXED ||
+                       fmt_res.value() == FrameFormat::REMOTE_VARIABLE;
             }
 
         // === Data Frame Specific Methods ===
@@ -43,18 +57,15 @@ namespace USBCANBridge {
             set_dlc(std::size_t dlc) {
                 return this->derived().impl_set_dlc(dlc);
             }
-        public:
 
-            // * Default constructor and destructor
-            Data() = default;
-            ~Data() = default;
+        public:
 
             /**
              * @brief Get the Frame Format object
              * @return std::enable_if_t<is_data_frame_v<T>, Result<FrameFmt> >
              */
             template<typename T = Derived>
-            std::enable_if_t<is_data_frame_v<T>, Result<FrameFmt> >
+            std::enable_if_t<is_data_frame_v<T>, Result<FrameFormat> >
             get_format() const {
                 return this->derived().impl_get_format();
             }
@@ -65,7 +76,11 @@ namespace USBCANBridge {
              */
             template<typename T = Derived>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
-            set_format(FrameFmt format) {
+            set_format(FrameFormat format) {
+                auto validate = this->validate_format(to_byte(format));
+                if (!validate) {
+                    return validate.error();
+                }
                 return this->derived().impl_set_format(format);
             }
 
@@ -92,6 +107,10 @@ namespace USBCANBridge {
             template<typename T = Derived>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_id(std::uint32_t id) {
+                auto validate = this->validate_id(id);
+                if (!validate) {
+                    return validate.error();
+                }
                 return this->derived().impl_set_id(id);
             }
             /**
@@ -106,24 +125,6 @@ namespace USBCANBridge {
             get_dlc() const {
                 return this->derived().impl_get_dlc();
             }
-            /**
-             * @brief Set the data object
-             * Set the data payload of the data frame and update the dlc accordingly.
-             * This calls derived().set_data() for frame-specific data setting, and also updates the dlc accordingly.
-             * @tparam T
-             * @param data A span representing the data payload to set.
-             * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
-             */
-            template<typename T = Derived>
-            std::enable_if_t<is_data_frame_v<T>, Result<void> >
-            set_data(span<const std::byte> data) {
-                auto res = this->derived().impl_set_data(data);
-                if (!res) {
-                    return res;
-                }
-                return set_dlc(data.size());
-            }
-
             /**
              * @brief Get a read-only view of the data payload.
              * @return std::enable_if_t<is_data_frame_v<T>, Result<span<const std::byte>>>
@@ -142,6 +143,38 @@ namespace USBCANBridge {
             std::enable_if_t<is_data_frame_v<T>, Result<span<std::byte> > >
             get_data() {
                 return this->derived().impl_get_data();
+            }
+            /**
+             * @brief Set the data object
+             * Set the data payload of the data frame and update the dlc accordingly.
+             * This calls derived().impl_set_data() for frame-specific data setting, and also updates the dlc accordingly.
+             * @tparam T
+             * @param data A span representing the data payload to set.
+             * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<void> >
+            set_data(span<const std::byte> data) {
+                auto validate = this->validate_data_length(data.size());
+                if (!validate) {
+                    return validate.error();
+                }
+                auto res = this->derived().impl_set_data(data);
+                if (!res) {
+                    return res;
+                }
+                return set_dlc(data.size());
+            }
+
+
+            /**
+             * @brief Check if the frame is extended (29-bit ID) or standard (11-bit ID).
+             * @return std::enable_if_t<is_data_frame_v<T>, Result<bool> >
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_data_frame_v<T>, Result<bool> >
+            is_extended() const {
+                return this->derived().impl_is_extended();
             }
     };
 

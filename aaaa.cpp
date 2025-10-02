@@ -173,18 +173,13 @@ public:
     }
 };
 
-} // namespace USBCANBridge
+
 
 /**
  * @brief Shared checksum functionality for frames that need it
  */
 
-#pragma once
-#include "common.hpp"
-#include "result.hpp"
-#include "frame_traits.hpp"
 
-namespace USBCANBridge {
 
 /**
  * @brief Mixin class providing checksum functionality
@@ -216,7 +211,7 @@ protected:
     Derived& derived() { return static_cast<Derived&>(*this); }
 };
 
-} // namespace USBCANBridge
+
 
 /**
  * @brief Validation interfaces for compile-time and runtime validation
@@ -226,7 +221,7 @@ protected:
 #include "common.hpp"
 #include "result.hpp"
 
-namespace USBCANBridge {
+
 
 /**
  * @brief Core validation interface for all frames
@@ -281,18 +276,12 @@ public:
     }
 };
 
-} // namespace USBCANBridge
+
 
 /**
  * @brief New FixedFrame implementation with clean interfaces
  */
 
-#pragma once
-#include "frame_interfaces.hpp"
-#include "checksum_mixin.hpp"
-#include "validation_interfaces.hpp"
-
-namespace USBCANBridge {
 
 class FixedFrame : 
     public DataFrame<FixedFrame>,
@@ -341,18 +330,8 @@ private:
     void impl_init_fixed_fields();
 };
 
-} // namespace USBCANBridge
 
-/**
- * @brief New ConfigFrame implementation with clean interfaces
- */
 
-#pragma once
-#include "frame_interfaces.hpp"
-#include "checksum_mixin.hpp"
-#include "validation_interfaces.hpp"
-
-namespace USBCANBridge {
 
 class ConfigFrame : 
     public ConfigInterface<ConfigFrame>,
@@ -403,7 +382,7 @@ private:
     void impl_init_fixed_fields();
 };
 
-} // namespace USBCANBridge
+
 
 /**
  * @brief Enhanced fluent FrameBuilder with validation and single entry point
@@ -415,7 +394,7 @@ private:
 #include "variable_frame_v2.hpp"
 #include "config_frame_v2.hpp"
 
-namespace USBCANBridge {
+
 
 /**
  * @brief Enhanced FrameBuilder with validation and type safety
@@ -581,7 +560,7 @@ public:
     }
 };
 
-} // namespace USBCANBridge
+}
 
 // Example usage with the new architecture
 #include "frame_builder_v2.hpp"
@@ -608,4 +587,3 @@ auto var_frame = Frame::variable()
     .can_id(0x456)
     .data(small_data)
     .build();
-    
