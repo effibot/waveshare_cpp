@@ -57,7 +57,7 @@ In this case, the `TYPE` field is defined as it's stated in note [1] below and t
 ```
 bit 7-6: 11 (indicates variable frame)
 bit 5: FRAME_TYPE (0 for standard, 1 for extended)
-bit 4: FRAME_FORMAT (0 for data frame, 1 for remote frame)
+bit 4: FRAME_FMT (0 for data frame, 1 for remote frame)
 bit 3-0: DLC (data length code, indicates the number of data bytes, from 0 to 8)
 ```
 > Using a `uint8_t` to represent the variable frame type allows to easily extract the individual fields using bitwise operations. For example, starting with `0xC0` to sets the two most significant bits to `11`, one can do the following:

@@ -49,12 +49,11 @@
 
 #pragma once
 
-#include "span_compat.hpp"
 #include <array>
 #include <cstddef>
 #include <type_traits>
 #include <vector>
-#include <boost/core/span.hpp>
+//#include <boost/core/span.hpp>
 /**
  * @namespace USBCANBridge
  * @brief Namespace containing all USB-CAN bridge related functionality.
@@ -88,6 +87,7 @@ namespace USBCANBridge {
     struct FrameTraits {
         static constexpr std::size_t FRAME_SIZE = 0;
         using StorageType = void; // Intentionally void to prevent usage
+        struct Layout {}; // Empty layout to prevent usage
     };
 
 /**
@@ -132,7 +132,7 @@ namespace USBCANBridge {
     struct FrameTraits<VariableFrame> {
         static constexpr std::size_t MAX_FRAME_SIZE = 15;
         static constexpr std::size_t MIN_FRAME_SIZE = 5;
-        using StorageType = boost::span<std::byte>;
+        using StorageType = std::vector<std::byte>;
 
         /**
          * @brief Dynamic layout with helper functions for runtime calculations.

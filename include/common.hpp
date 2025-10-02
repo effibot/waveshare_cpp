@@ -23,7 +23,6 @@
 #include <string>
 #include <array>
 
-#include "span_compat.hpp"
 #include "frame_traits.hpp"
 
 /**
@@ -278,71 +277,6 @@ namespace USBCANBridge {
  */
     enum class RTX : std::uint8_t { AUTO = 0x00, OFF = 0x01 };
 
-/**
- * @brief Byte position indices for fixed-size USB-CAN frames.
- *
- * Defines the byte positions within a fixed-size (20-byte) USB-CAN frame
- * structure. This enum provides a convenient and type-safe way to access
- * specific bytes in the frame without using magic numbers, improving code
- * readability and maintainability.
- *
- * @note Frame structure (20 bytes total):
- * [START][HEADER][TYPE][FRAME_TYPE][FRAME_FMT][ID0-ID3][DLC][DATA0-DATA7][RESERVED][CHECKSUM]
- */
-    enum class FixedSizeIndex : std::size_t {
-        START = 0, ///< Start delimiter byte (0xAA)
-        HEADER = 1, ///< Header byte (0x55)
-        TYPE = 2, ///< Frame type byte (Type enum)
-        FRAME_TYPE = 3, ///< CAN frame type byte (FrameType enum)
-        FRAME_FMT = 4, ///< Frame format byte (FrameFmt enum)
-        ID_0 = 5, ///< CAN ID byte 0 (most significant byte)
-        ID_1 = 6, ///< CAN ID byte 1
-        ID_2 = 7, ///< CAN ID byte 2
-        ID_3 = 8, ///< CAN ID byte 3 (least significant byte)
-        DLC = 9,  ///< Data length code byte (0-8)
-        DATA_0 = 10, ///< Data byte 0
-        DATA_1 = 11, ///< Data byte 1
-        DATA_2 = 12, ///< Data byte 2
-        DATA_3 = 13, ///< Data byte 3
-        DATA_4 = 14, ///< Data byte 4
-        DATA_5 = 15, ///< Data byte 5
-        DATA_6 = 16, ///< Data byte 6
-        DATA_7 = 17, ///< Data byte 7
-        RESERVED = 18, ///< Reserved byte (always 0x00)
-        CHECKSUM = 19 ///< Checksum byte (frame validation)
-    };
-
-/**
- * @brief Byte position indices for the Configuration Command frame.
- *
- * It uses most of the same structure as FixedSizeIndex, but with some
- * differences. See the notes below.
- * @note Frame structure (20 bytes total):
- * [START][HEADER][TYPE][CAN_BAUD][FRAME_TYPE][FILTER_ID1-FILTER_ID4][MASK_ID1-MASK_ID4][CAN_MODE][AUTO_RTX][BACKUP0-BACKUP3][CHECKSUM]
- */
-    enum class ConfigCommandIndex : std::size_t {
-        START = 0, ///< Start delimiter byte (0xAA)
-        HEADER = 1, ///< Header byte (0x55)
-        TYPE = 2,  ///< Frame type byte (Type enum)
-        CAN_BAUD = 3, ///< CAN baud rate byte (CANBaud enum)
-        FRAME_TYPE = 4, ///< CAN frame type byte (FrameType enum)
-        FILTER_ID_1 = 5, ///< CAN ID byte 0 (most significant byte)
-        FILTER_ID_2 = 6, ///< CAN ID byte 1
-        FILTER_ID_3 = 7, ///< CAN ID byte 2
-        FILTER_ID_4 = 8, ///< CAN ID byte 3 (least significant byte)
-        MASK_ID_1 = 9, ///< CAN ID byte 0 (most significant byte)
-        MASK_ID_2 = 10, ///< CAN ID byte 1
-        MASK_ID_3 = 11, ///< CAN ID byte 2
-        MASK_ID_4 = 12, ///< CAN ID byte 3 (least significant byte)
-        CAN_MODE = 13, ///< CAN mode byte (CANMode enum)
-        AUTO_RTX = 14, ///< Automatic retransmission control byte (RTX enum)
-        BACKUP_0 = 15, ///< Backup byte
-        BACKUP_1 = 16, ///< Backup byte
-        BACKUP_2 = 17, ///< Backup byte
-        BACKUP_3 = 18, ///< Backup byte
-        CHECKSUM = 19 ///< Checksum byte (frame validation)
-    };
-
     /**
      * @brief Utility function to get a little-endian byte array from an unsigned integer.
      *
@@ -472,7 +406,7 @@ namespace USBCANBridge {
      * @return std::byte The computed checksum byte
      */
     template<typename T>
-    std::byte<
+    std::enable_if_t<has_checksum_v<T>, std::byte>
     compute_checksum(const storage_t<T>& data) {
         std::uint8_t sum = 0;
         for (const auto& byte : data) {

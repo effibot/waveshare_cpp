@@ -18,19 +18,29 @@ namespace USBCANBridge {
     template<typename Derived>
     class BaseFrame {
         protected:
-            // Bring traits into scope
+            // * Bring traits into scope
             using Traits = frame_traits_t<Derived>;
             using StorageType = storage_t<Derived>;
 
         private:
-            // Access to the concrete Derived class
+            // * Access to the concrete Derived class
             Derived& derived() {
                 return static_cast<Derived&>(*this);
             }
             const Derived& derived() const {
                 return static_cast<const Derived&>(*this);
             }
-            // Initialize fixed fields
+
+
+
+        public:
+            // * Default constructor
+            BaseFrame() = default;
+            ~BaseFrame() = default;
+
+        // === UNIVERSAL OPERATIONS - Available for ALL frame types ===
+        private:
+            // * Initialize fixed fields
             void init_fixed_fields() {
                 if constexpr (std::is_same_v<Derived, FixedFrame> ) {
                     derived().impl_init_fixed_fields();
@@ -38,13 +48,6 @@ namespace USBCANBridge {
             }
 
         public:
-            // Default constructor
-            BaseFrame() = default;
-            ~BaseFrame() = default;
-
-
-            // ==== UNIVERSAL OPERATIONS - Available for ALL frame types ====
-
             /**
              * @brief Serialize frame to byte buffer.
              */
@@ -87,7 +90,7 @@ namespace USBCANBridge {
                 return derived().impl_clear();
             }
 
-            // ==== DATA FRAME OPERATIONS - Only available for FixedFrame and VariableFrame ====
+            // === DATA FRAME OPERATIONS - Only available for FixedFrame and VariableFrame ===
 
             /**
              * @brief Set CAN ID (only available for data frames).
@@ -143,7 +146,7 @@ namespace USBCANBridge {
                 return derived().impl_get_dlc();
             }
 
-            // ==== CONFIG FRAME OPERATIONS - Only available for ConfigFrame ====
+            // === CONFIG FRAME OPERATIONS - Only available for ConfigFrame ===
 
             /**
              * @brief Set baud rate (only available for config frames).
@@ -205,8 +208,34 @@ namespace USBCANBridge {
             set_mode(CANMode mode) {
                 return derived().impl_set_mode(mode);
             }
+            /**
+             * @brief Get operating mode (only available for config frames).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<CANMode> >
+            get_mode() const {
+                return derived().impl_get_mode();
+            }
+            /**
+             * @brief Set the Auto RTX byte
+             * @param auto_rtx New Auto RTX value
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<void> >
+            set_auto_rtx(RTX auto_rtx) {
+                return derived().impl_set_auto_rtx(auto_rtx);
+            }
+            /**
+             * @brief Get the Auto RTX byte
+             * @return Current Auto RTX value
+             */
+            template<typename T = Derived>
+            std::enable_if_t<is_config_frame_v<T>, Result<RTX> >
+            get_auto_rtx() const {
+                return derived().impl_get_auto_rtx();
+            }
 
-            // ==== FIXED FRAME SPECIFIC OPERATIONS ====
+            // === FIXED FRAME SPECIFIC OPERATIONS ===
 
             /**
              * @brief Set frame type (only available for FixedFrame).
@@ -217,34 +246,43 @@ namespace USBCANBridge {
                 return derived().impl_set_frame_type(type);
             }
 
+
+        // === CHECKSUM INTERFACE (for Fixed and Config frames) ===
+        private:
             /**
-             * @brief Verify checksum (only available for FixedFrame).
+             * @brief Verify checksum (only available for FixedFrame and ConfigFrame).
              */
             template<typename T = Derived>
-            std::enable_if_t<std::is_same_v<T, FixedFrame>, bool>
+            std::enable_if_t<has_checksum_v<T>, Result<bool> >
             verify_checksum() const {
                 return derived().impl_verify_checksum();
             }
-
-            // ==== VARIABLE FRAME SPECIFIC OPERATIONS ====
-
             /**
-             * @brief Set extended ID flag (only available for VariableFrame).
+             * @brief Recalculate and update checksum (only available for FixedFrame and ConfigFrame).
              */
             template<typename T = Derived>
-            std::enable_if_t<std::is_same_v<T, VariableFrame>, Result<void> >
-            set_extended_id(bool extended) {
-                return derived().impl_set_extended_id(extended);
+            std::enable_if_t<has_checksum_v<T>, void>
+            update_checksum() {
+                return derived().update_checksum();
             }
-
             /**
-             * @brief Check if using extended ID (only available for VariableFrame).
+             * @brief Reset checksum state (only available for FixedFrame and ConfigFrame).
              */
             template<typename T = Derived>
-            std::enable_if_t<std::is_same_v<T, VariableFrame>, bool>
-            is_extended_id() const {
-                return derived().impl_is_extended_id();
+            std::enable_if_t<has_checksum_v<T>, void>
+            mark_checksum_dirty() {
+                return derived().dirty_ = true;
             }
+            /**
+             * @brief Calculate the checksum from the internal storage (only available for FixedFrame and ConfigFrame).
+             */
+            template<typename T = Derived>
+            std::enable_if_t<has_checksum_v<T>, std::byte>
+            calculate_checksum() const {
+                return derived().calculate_checksum();
+            }
+
+
     };
 
-} // namespace USBCANBridge
+} //  namespace USBCANBridge

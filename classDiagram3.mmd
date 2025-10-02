@@ -1,0 +1,40 @@
+---
+title: USB-CAN bridge
+---
+classDiagram
+    %% Frame Traits
+    class FrameTraits~T~:::interfaces {
+        <<template>>
+        + static constexpr size_t FRAME_SIZE = 0
+        + StorageType = void        
+    }
+
+    class FixedFrame:::interfaces {
+        <<specialization>>
+        +static constexpr size_t FRAME_SIZE = 20
+        +StorageType = std::array~std::byte, FRAME_SIZE~
+    }
+    class Layout:::interfaces {
+        <<struct>>
+        + uint32_t id
+        + uint8_t dlc
+        + uint8_t frame_type
+        + std::array~uint8_t, 8~ data
+        + uint8_t checksum
+    }
+
+    class ConfigFrame~FrameTraits~:::interfaces {
+        <<specialization>>
+        + static constexpr size_t FRAME_SIZE = 20
+        + StorageType = std::array~std::byte, FRAME_SIZE~
+    }
+     
+    %% Style classes
+    classDef classes fill:#f9f,stroke:#333,stroke-width:4px;
+    classDef interfaces fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
+    classDef enums fill:#bfb,stroke:#333,stroke-width:4px;
+    classDef structs fill:#ffb,stroke:#333,stroke-width:4px;
+
+    %% Relationships
+    FrameTraits <|-- FixedFrame~FrameTraits~
+    FrameTraits <|-- ConfigFrame~FrameTraits~

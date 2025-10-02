@@ -47,7 +47,7 @@ namespace USBCANBridge {
 
             ~ConfigFrame() = default;
 
-            // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
+            // %  BASEFRAME INTERFACE IMPLEMENTATIONS
 
             // Universal operations
             Result<void> impl_serialize(span<std::byte> buffer) const;
@@ -65,7 +65,6 @@ namespace USBCANBridge {
             Result<void> impl_set_mask(uint32_t mask);
             Result<uint32_t> impl_get_mask() const;
 
-            // ==== CONFIG FRAME SPECIFIC OPERATIONS ====
 
             /**
              * @brief Set configuration mode.
@@ -82,23 +81,5 @@ namespace USBCANBridge {
              */
             bool impl_verify_checksum() const;
 
-            // ==== CHECKSUM UTILITIES ====
-
-            /**
-             * @brief Calculate checksum for raw byte data (static utility).
-             */
-            static uint8_t calculate_checksum(const std::byte* data, std::size_t size);
-
-            /**
-             * @brief Validate checksum in raw byte data (static utility).
-             */
-            static bool validate_checksum(const std::byte* data, std::size_t size);
-
-            /**
-             * @brief Force checksum recalculation.
-             */
-            void mark_dirty() const {
-                checksum_dirty_ = true;
-            }
     };
 }
