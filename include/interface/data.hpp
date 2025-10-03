@@ -79,7 +79,8 @@ namespace USBCANBridge {
             set_format(FrameFormat format) {
                 auto validate = this->validate_format(to_byte(format));
                 if (!validate) {
-                    return validate.error();
+                    return Result<void>::error(validate.error(),
+                        "DataInterface::set_format");
                 }
                 return this->derived().impl_set_format(format);
             }
@@ -109,7 +110,8 @@ namespace USBCANBridge {
             set_id(std::uint32_t id) {
                 auto validate = this->validate_id(id);
                 if (!validate) {
-                    return validate.error();
+                    return Result<void>::error(validate.error(),
+                        "DataInterface::set_id");
                 }
                 return this->derived().impl_set_id(id);
             }
@@ -157,11 +159,13 @@ namespace USBCANBridge {
             set_data(span<const std::byte> data) {
                 auto validate = this->validate_data_length(data.size());
                 if (!validate) {
-                    return validate.error();
+                    return Result<void>::error(validate.error(),
+                        "DataInterface::set_data");
                 }
                 auto res = this->derived().impl_set_data(data);
                 if (!res) {
-                    return res;
+                    return Result<void>::error(res.error(),
+                        "DataInterface::set_data");
                 }
                 return set_dlc(data.size());
             }

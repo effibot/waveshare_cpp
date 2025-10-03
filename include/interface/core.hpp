@@ -15,9 +15,9 @@
 #include <cstddef>
 #include <type_traits>
 
-#include "../protocol.hpp"
-#include "../result.hpp"
-#include "../frame_traits.hpp"
+#include "../enums/protocol.hpp"
+#include "../template/result.hpp"
+#include "../template/frame_traits.hpp"
 
 #include "core_validator.hpp"
 
@@ -44,7 +44,7 @@ namespace USBCANBridge {
                 return static_cast<const Derived&>(*this);
             }
             // * Storage for the frame data
-            alignas(8) mutable storage frame_storage_{0x00};
+            alignas(8) mutable storage frame_storage_{};
 
             // * Prevent this class from being instantiated directly
             CoreInterface() {
@@ -57,7 +57,7 @@ namespace USBCANBridge {
 
             /**
              * @brief Initialize constants fields in the frame storage.
-             * This method is called by the derived class constructor (or by the `reset()`) method to set (or reset) the initial values of the constant fields.
+             * This method is called by the derived class constructor (or by the `clear()`) method to set (or reset) the initial values of the constant fields.
              */
             void init_fields() {
                 // Set the Start byte
@@ -98,14 +98,23 @@ namespace USBCANBridge {
              */
             template<typename T = Derived, size_t N>
             Result<span<std::byte, N> > serialize() {
-                size_t current_size;
-                if constexpr (!is_variable_frame_v<T> ) {
-                    current_size = layout::FRAME_SIZE;
-                } else {
-                    current_size = derived().impl_size().value();
+                // * If the frame has a checksum and it's dirty, update it
+                if constexpr (has_checksum_v<T> ) {
+                    if (this->is_checksum_dirty()) {
+                        auto res = this->update_checksum();
+                        if (!res) {
+                            return Result<span<std::byte, N> >::error(res.error(),
+                                "CoreInterface::serialize");
+                        }
+                    }
                 }
-                return Result<span<std::byte, N> >(span<std::byte,
-                    N>(frame_storage_.data(), current_size));
+                // * Determine current size
+                size_t current_size = size().value();
+                // * Return the serialized frame data
+                return Result<span<std::byte, N> >(span<std::byte, N>(
+                    frame_storage_.data(),
+                    current_size
+                ));
             }
 
             /**
@@ -115,7 +124,17 @@ namespace USBCANBridge {
              * @note This calls derived().deserialize() for frame-specific deserialization.
              */
             Result<void> deserialize(span<const std::byte> data) {
-                return derived().impl_deserialize(data);
+                // * validate the input data
+                auto result = this->validate(data);
+                if (!result) {
+                    return Result<void>::error(result.error(), "CoreInterface::deserialize");
+                }
+                // * call derived class to perform deserialization
+                result = derived().impl_deserialize(data);
+                if (!result) {
+                    return Result<void>::error(result.error(), "CoreInterface::deserialize");
+                }
+                return Result<void>::success();
             }
 
             /**
@@ -143,8 +162,9 @@ namespace USBCANBridge {
              * @note If the frame has a fixed size, this returns that size. If variable, it calls derived() to compute the size.
              * @return Result<std::size_t> The size of the frame in bytes.
              */
+            template<typename T = Derived>
             Result<std::size_t> size() const {
-                if constexpr (!traits::is_variable_size) {
+                if  constexpr (!is_variable_frame_v<T> ) {
                     return Result<std::size_t>(traits::FRAME_SIZE);
                 }
                 return derived().impl_size();

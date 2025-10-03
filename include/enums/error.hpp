@@ -43,17 +43,18 @@ namespace USBCANBridge {
         WBAD_CAN_BAUD = 14, /**< Bad CAN baud rate */
         WBAD_FILTER = 15, /**< Bad ID filter */
         WBAD_MASK = 16, /**< Bad ID mask */
-        WTIMEOUT = 17,  /**< Timeout */
-        DNOT_FOUND = 18, /**< Device not found */
-        DNOT_OPEN = 19, /**< Device not open */
-        DALREADY_OPEN = 20, /**< Device already open */
-        DREAD_ERROR = 21, /**< Device read error */
-        DWRITE_ERROR = 22, /**< Device write error */
-        DCONFIG_ERROR = 23, /**< Device configuration error */
-        CAN_SDO_TIMEOUT = 24, /**< CAN SDO timeout */
-        CAN_SDO_ABORT = 25, /**< CAN SDO abort */
-        CAN_PDO_ERROR = 26, /**< CAN PDO error */
-        CAN_NMT_ERROR = 27, /**< CAN NMT error */
+        WBAD_RTX = 17, /**< Bad auto retransmission setting */
+        WTIMEOUT = 18,  /**< Timeout */
+        DNOT_FOUND = 19, /**< Device not found */
+        DNOT_OPEN = 20, /**< Device not open */
+        DALREADY_OPEN = 21, /**< Device already open */
+        DREAD_ERROR = 22, /**< Device read error */
+        DWRITE_ERROR = 23, /**< Device write error */
+        DCONFIG_ERROR = 24, /**< Device configuration error */
+        CAN_SDO_TIMEOUT = 25, /**< CAN SDO timeout */
+        CAN_SDO_ABORT = 26, /**< CAN SDO abort */
+        CAN_PDO_ERROR = 27, /**< CAN PDO error */
+        CAN_NMT_ERROR = 28, /**< CAN NMT error */
         UNKNOWN = 255   /**< Unknown error */
     };
 

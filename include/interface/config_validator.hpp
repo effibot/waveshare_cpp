@@ -10,9 +10,9 @@
  */
 
 #pragma once
-#include "../result.hpp"
-#include "../frame_traits.hpp"
-#include "../protocol.hpp"
+#include "../template/result.hpp"
+#include "../template/frame_traits.hpp"
+#include "../enums/protocol.hpp"
 
 namespace USBCANBridge {
     /**
@@ -128,6 +128,22 @@ namespace USBCANBridge {
                            Result<bool>::error(Status::WBAD_MASK);
                 default:
                     return Result<bool>::error(Status::WBAD_MASK);
+                }
+            }
+
+            /**
+             * @brief Validate the given RTX (retransmission) setting.
+             * @param rtx The RTX setting to validate.
+             * @return Result<bool> True if valid, false if invalid, or an error status on failure.
+             * @see RTX in protocol.hpp for supported settings.
+             */
+            Result<bool> validateRTX(RTX rtx) const {
+                switch (rtx) {
+                case RTX::AUTO:
+                case RTX::OFF:
+                    return Result<bool>::success(true);
+                default:
+                    return Result<bool>::error(Status::WBAD_RTX);
                 }
             }
 

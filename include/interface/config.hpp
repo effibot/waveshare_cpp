@@ -1,9 +1,20 @@
+/**
+ * @file config.hpp
+ * @author Andrea Efficace (andrea.efficace1@gmail.com)
+ * @brief Configuration interface for the USB-CAN Bridge library.
+ * @version 0.1
+ * @date 2025-10-03
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
 #pragma once
 #include "core.hpp"
-
+#include "config_validator.hpp"
 namespace USBCANBridge {
     template<typename Derived>
-    class ConfigInterface : public CoreInterface<Derived> {
+    class ConfigInterface : public CoreInterface<Derived>, public ConfigValidator<Derived> {
         // * Ensure that Derived is ConfigFrame
         static_assert(is_config_frame_v<Derived>,
             "Derived must be a config frame type");
@@ -24,6 +35,11 @@ namespace USBCANBridge {
             template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_baud_rate(CANBaud baud_rate) {
+                auto valid = this->validateBaudRate(baud_rate);
+                if (!valid) {
+                    return Result<void>::error(Status::WBAD_CAN_BAUD,
+                        "ConfigInterface::set_baud_rate");
+                }
                 return this->derived().impl_set_baud_rate(baud_rate);
             }
             /**
@@ -43,6 +59,11 @@ namespace USBCANBridge {
             template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_can_mode(CANMode mode) {
+                auto valid = this->validateCanMode(mode);
+                if (!valid) {
+                    return Result<void>::error(Status::WBAD_CAN_MODE,
+                        "ConfigInterface::set_can_mode");
+                }
                 return this->derived().impl_set_can_mode(mode);
             }
             /**
@@ -62,6 +83,10 @@ namespace USBCANBridge {
             template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_filter(uint32_t filter) {
+                auto valid = this->validateFilter(filter);
+                if (!valid) {
+                    return Result<void>::error(Status::WBAD_FILTER, "ConfigInterface::set_filter");
+                }
                 return this->derived().impl_set_filter(filter);
             }
             /**
@@ -81,6 +106,10 @@ namespace USBCANBridge {
             template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_mask(uint32_t mask) {
+                auto valid = this->validateMask(mask);
+                if (!valid) {
+                    return Result<void>::error(Status::WBAD_MASK, "ConfigInterface::set_mask");
+                }
                 return this->derived().impl_set_mask(mask);
             }
             /**
@@ -99,6 +128,10 @@ namespace USBCANBridge {
              */template<typename T = Derived>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_auto_rtx(RTX auto_rtx) {
+                auto valid = this->validateRTX(auto_rtx);
+                if (!valid) {
+                    return Result<void>::error(Status::WBAD_RTX, "ConfigInterface::set_auto_rtx");
+                }
                 return this->derived().impl_set_auto_rtx(auto_rtx);
             }
             /**

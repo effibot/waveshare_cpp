@@ -19,7 +19,7 @@
 #include <sstream>
 #include <iomanip>
 
-#include "frame_traits.hpp"
+#include "../template/frame_traits.hpp"
 
 /**
  * @namespace USBCANBridge
@@ -54,10 +54,15 @@ namespace USBCANBridge {
      * These constants define the different types of frames used in the USB-CAN
      * communication protocol.
      * @note Available frame types are:
+     *
      * - DATA_FIXED: Data frame of fixed length (20 bytes total)
+     *
      * - DATA_VARIABLE: Variable-length data frame (5 to 13 bytes total)
+     *
      * - CONF_FIXED: Set the adapter to accept fixed-length data frames
+     *
      * - CONF_VARIABLE: Set the adapter to accept variable-length data frames
+     * @attention The CONF_FIXED and CONF_VARIABLE types are used to configure the adapter's behavior and are not used for regular data transmission.Only one configuration frame should be sent to the adapter at startup to set the desired mode.
      */
     enum class Type : std::uint8_t {
         DATA_FIXED = 0x01,
@@ -73,8 +78,11 @@ namespace USBCANBridge {
      * Defines the CAN ID format (standard or extended) used in the protocol.
      * @note Available CAN ID types are:
      * - STD_FIXED: Standard ID (11-bit) with fixed frame structure
+     *
      * - STD_VARIABLE: Standard ID (11-bit) with variable frame structure
+     *
      * - EXT_FIXED: Extended ID (29-bit) with fixed frame structure
+     *
      * - EXT_VARIABLE: Extended ID (29-bit) with variable frame structure
      * <<< Recommended: STD_VARIABLE >>>
      */
@@ -92,8 +100,11 @@ namespace USBCANBridge {
      * Defines the frame format (data or remote) used in the protocol.
      * @note Available frame formats are:
      * - DATA_FIXED: Data frame with fixed structure (carries data payload)
+     *
      * - REMOTE_FIXED: Remote transmission request with fixed structure
+     *
      * - DATA_VARIABLE: Data frame with variable structure
+     *
      * - REMOTE_VARIABLE: Remote transmission request with variable structure
      * <<< Recommended: DATA_VARIABLE >>>
      */
@@ -118,10 +129,15 @@ namespace USBCANBridge {
      * nodes.
      *
      * @note Cable length limitations (approximate):
+     *
      * - 1 Mbps: up to 25m
+     *
      * - 500 kbps: up to 100m
+     *
      * - 250 kbps: up to 250m
+     *
      * - 125 kbps: up to 500m
+     *
      * - Lower speeds: up to 1000m+
      * <<< Recommended: 1 Mbps >>>
      */
@@ -147,9 +163,13 @@ namespace USBCANBridge {
      * Defines the different operating modes for the CAN controller.
      * Besides NORMAL mode, other modes are useful for testing and diagnostics rather than regular operation.
      * @note Available CAN modes are:
+     * 
      * - NORMAL: Standard operation for normal bus communication.
+     * 
      * - LOOPBACK: Used for internal testing without affecting the bus.
+     * 
      * - SILENT: Listen-only mode, useful for monitoring bus traffic without transmitting.
+     * 
      * - LOOPBACK_SILENT: Combination of loopback and silent modes for testing
      *   without bus impact.
      * <<< Recommended: NORMAL >>>
@@ -425,12 +445,18 @@ namespace USBCANBridge {
      * @param frame_fmt The FrameFormat of the VariableFrame
      * @param dlc The data length code (DLC) of the VariableFrame
      * @note The Type byte is constructed as follows:
+     *
      * - Bits 7-6: Type base byte (0xC0 for VariableFrame)
+     *
      * - Bit 5: FrameType (0 for STD, 1 for EXT)
+     *
      * - Bit 4: FrameFormat (0 for DATA, 1 for REMOTE)
+     *
      * - Bits 3-0: DLC (0-8)
-     * ! We assume that the caller has already validated each parameter.
-     * @see extract_type_base, extract_frame_type, extract_frame_format, extract_dlc to know the reason behind each bit manipulation.
+     *
+     * @see extract_type_base, extract_frame_type, extract_frame_format,
+       extract_dlc to know the reason behind each bit manipulation.
+     * @warning We assume that the caller has already validated each parameter.
      * @return The calculated Type byte for the VariableFrame
      */
     template<typename T>

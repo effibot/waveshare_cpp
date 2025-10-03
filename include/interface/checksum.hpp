@@ -1,6 +1,6 @@
 #pragma once
-#include "../result.hpp"
-#include "../frame_traits.hpp"
+#include "../template/result.hpp"
+#include "../template/frame_traits.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <numeric>

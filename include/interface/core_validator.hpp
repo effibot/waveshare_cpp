@@ -11,9 +11,9 @@
 
 #pragma once
 
-#include "../result.hpp"
-#include "../frame_traits.hpp"
-#include "../protocol.hpp"
+#include "../template/result.hpp"
+#include "../template/frame_traits.hpp"
+#include "../enums/protocol.hpp"
 
 #include <boost/core/span.hpp>
 #include <cstddef>
@@ -77,11 +77,12 @@ namespace USBCANBridge {
         public:
             /**
              * @brief Validate the frame.
-             * @return Result<Status> Status::SUCCESS if the frame is valid, or an error status if invalid.
+             * @param data The buffer to validate.
+             * @return Result<bool> Status::SUCCESS if the frame is valid, or an error status if invalid.
              * @note This calls derived().impl_validate() for frame-specific validation.
              */
-            Result<void> validate() {
-                return derived().impl_validate();
+            Result<bool> validate(span<const std::byte> data) const {
+                return derived().impl_validate(data);
             }
             /**
              * @brief Validate the buffer returned when serializing the frame.

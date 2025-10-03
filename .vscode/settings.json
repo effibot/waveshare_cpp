@@ -61,5 +61,10 @@
     "/w44265",
     "/w14928"
   ],
-  "C_Cpp_Runner.msvcSecureNoWarnings": false
+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
+  "files.associations": {
+    "type_traits": "cpp",
+    "aaaa": "cpp",
+    "*.inc": "cpp"
+  }
 }
