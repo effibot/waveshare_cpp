@@ -15,22 +15,19 @@
 
 namespace USBCANBridge {
     /**
-     * @brief Data frame validation
-     * This class provides validation methods for the methods provided by the DataInterface.
-     * @tparam Derived
-     * @note This class uses CRTP to call derived class implementations for specific validations when needed.
+     * @brief Data frame validation utilities
+     * This class provides standalone validation methods for data frame types.
+     * @tparam Frame The frame type to validate
      */
-    template<typename Derived>
+    template<typename Frame>
     class DataValidator {
-        protected:
-            // * CRTP helper to access derived class methods
-            Derived& derived() {
-                return static_cast<Derived&>(*this);
+        private:
+            const Frame* frame_;
+
+        public:
+            explicit DataValidator(const Frame& frame) : frame_(&frame) {
             }
-            // * CRTP helper to access derived class methods (const version)
-            const Derived& derived() const {
-                return static_cast<const Derived&>(*this);
-            }
+
         private:
             /**
              * @brief Internal helper to perform CAN ID validation logic.
@@ -65,10 +62,10 @@ namespace USBCANBridge {
              *
              * @return uint8_t The header byte.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_fixed_frame_v<T>, Result<uint8_t> >
             get_header_byte() const {
-                return derived().impl_get_header_byte();
+                return frame_->impl_get_header_byte();
             }
 
         public:
@@ -77,7 +74,7 @@ namespace USBCANBridge {
              * @note The header byte is initialized to Constants::HEADER (`0x55`) and should not change.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_fixed_frame_v<T>, Result<bool> >
             validate_header_byte() const {
                 if (get_header_byte() == Constants::HEADER) {
@@ -104,24 +101,23 @@ namespace USBCANBridge {
              * @brief Validate the CAN ID.
              * @param id The CAN ID to validate.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
-             * @note This calls derived().impl_validate_can_id() for frame-specific validation.
+             * @note This uses the frame's is_extended() method to determine validation rules.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<bool> >
             validate_can_id(uint32_t id) const {
-                return static_cast<const T*>(this)->validate_can_id_internal(
-                    derived().is_extended().value(), id);
+                return validate_can_id_internal(frame_->is_extended().value(), id);
             }
             /**
              * @brief Validate the data length before setting the data.
              * @param length The length of the data to validate.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
-             * @note This calls derived().impl_validate_data_length() for frame-specific validation.
+             * @note This validates against the maximum data length.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<bool> >
             validate_data_length(std::size_t length) const {
-                return static_cast<const T*>(this)->validate_data_length_internal(length);
+                return validate_data_length_internal(length);
             }
 
 

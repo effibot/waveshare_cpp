@@ -4,25 +4,50 @@
 #include <type_traits>
 
 namespace USBCANBridge {
-    template<typename Derived>
-    class DataInterface : public CoreInterface<Derived>,
-        public DataValidator<Derived> {
+    template<typename Frame>
+    class DataInterface : public CoreInterface<Frame> {
         // * Alias for traits
-        using traits = frame_traits_t<Derived>;
-        using layout = layout_t<Derived>;
-        using storage = storage_t<Derived>;
+        using traits = frame_traits_t<Frame>;
+        using layout = layout_t<Frame>;
+        using storage = storage_t<Frame>;
 
         // * Ensure that Derived is VariableFrame or FixedFrame
-        static_assert(is_data_frame_v<Derived>,
+        static_assert(is_data_frame_v<Frame>,
             "Derived must be a data frame type");
 
         protected:
-            // * Prevent this class from being instantiated directly
-            DataInterface() : CoreInterface<Derived>(), DataValidator<Derived>() {
-                static_assert(!std::is_same_v<Derived, DataInterface>,
-                    "DataInterface cannot be instantiated directly");
+            // * Get validator instance for data operations
+            DataValidator<Frame> get_data_validator() const {
+                return DataValidator<Frame>(this->derived());
             }
 
+            // * Prevent this class from being instantiated directly
+            DataInterface() : CoreInterface<Frame>() {
+                static_assert(!std::is_same_v<Frame, DataInterface>,
+                    "DataInterface cannot be instantiated directly");
+                this->derived().impl_init_fields();
+            }
+        public:
+            // <<< Decorate serialize to use checksum_interface_ >>>
+            /**
+             * @brief Decoration of CoreInterface::serialize to use checksum_interface_.
+             *
+             * @param buffer
+             * @return Result<void>
+             */
+            Result<void> serialize(span<std::byte> buffer) const {
+                if constexpr (has_checksum_v<Frame>) {
+                    // * Update checksum before serialization
+                    auto checksum_res = this->derived().update_checksum();
+                    if (!checksum_res) {
+                        return Result<void>::error(checksum_res.error(),
+                            "DataInterface::serialize");
+                    }
+                }
+
+                // Call the base class serialize method
+                return CoreInterface<Frame>::serialize(buffer);
+            }
 
         // === Utility Methods ===
         public:
@@ -30,7 +55,7 @@ namespace USBCANBridge {
              * @brief Find if the frame is a remote frame.
              * @return std::enable_if_t<is_data_frame_v<T>, Result<bool> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<bool> >
             is_remote() const {
                 auto fmt_res = this->derived().impl_get_format();
@@ -52,7 +77,7 @@ namespace USBCANBridge {
              * @param dlc
              * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_dlc(std::size_t dlc) {
                 return this->derived().impl_set_dlc(dlc);
@@ -64,7 +89,7 @@ namespace USBCANBridge {
              * @brief Get the Frame Format object
              * @return std::enable_if_t<is_data_frame_v<T>, Result<FrameFmt> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<FrameFormat> >
             get_format() const {
                 return this->derived().impl_get_format();
@@ -74,10 +99,11 @@ namespace USBCANBridge {
              * @param format
              * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_format(FrameFormat format) {
-                auto validate = this->validate_format(to_byte(format));
+                auto validator = get_data_validator();
+                auto validate = validator.validate_format(format);
                 if (!validate) {
                     return Result<void>::error(validate.error(),
                         "DataInterface::set_format");
@@ -92,7 +118,7 @@ namespace USBCANBridge {
              * @tparam T
              * @return std::enable_if_t<is_data_frame_v<T>, Result<std::uint32_t> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<std::uint32_t> >
             get_id() const {
                 return this->derived().impl_get_id();
@@ -105,10 +131,11 @@ namespace USBCANBridge {
              * @param id
              * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_id(std::uint32_t id) {
-                auto validate = this->validate_id(id);
+                auto validator = get_data_validator();
+                auto validate = validator.validate_can_id(id);
                 if (!validate) {
                     return Result<void>::error(validate.error(),
                         "DataInterface::set_id");
@@ -122,7 +149,7 @@ namespace USBCANBridge {
              * @tparam T
              * @return std::enable_if_t<is_data_frame_v<T>, Result<std::size_t> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<std::size_t> >
             get_dlc() const {
                 return this->derived().impl_get_dlc();
@@ -131,7 +158,7 @@ namespace USBCANBridge {
              * @brief Get a read-only view of the data payload.
              * @return std::enable_if_t<is_data_frame_v<T>, Result<span<const std::byte>>>
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<span<const std::byte> > >
             get_data() const {
                 return this->derived().impl_get_data();
@@ -141,7 +168,7 @@ namespace USBCANBridge {
              * @brief Get a modifiable view of the data payload.
              * @return std::enable_if_t<is_data_frame_v<T>, Result<span<std::byte>>>
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<span<std::byte> > >
             get_data() {
                 return this->derived().impl_get_data();
@@ -154,10 +181,11 @@ namespace USBCANBridge {
              * @param data A span representing the data payload to set.
              * @return std::enable_if_t<is_data_frame_v<T>, Result<void> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_data(span<const std::byte> data) {
-                auto validate = this->validate_data_length(data.size());
+                auto validator = get_data_validator();
+                auto validate = validator.validate_data_length(data.size());
                 if (!validate) {
                     return Result<void>::error(validate.error(),
                         "DataInterface::set_data");
@@ -175,7 +203,7 @@ namespace USBCANBridge {
              * @brief Check if the frame is extended (29-bit ID) or standard (11-bit ID).
              * @return std::enable_if_t<is_data_frame_v<T>, Result<bool> >
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<bool> >
             is_extended() const {
                 return this->derived().impl_is_extended();

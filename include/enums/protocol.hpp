@@ -88,10 +88,11 @@ namespace USBCANBridge {
      */
     enum class FrameType : std::uint8_t {
         STD_FIXED = 0x01,
-        STD_VARIABLE = 0x00,
+        STD_VARIABLE = 0,
         EXT_FIXED = 0x02,
-        EXT_VARIABLE = 0x01
+        EXT_VARIABLE = 1
     };
+    
     // * Define default Frame Type
     static constexpr FrameType DEFAULT_FRAME_TYPE = FrameType::STD_VARIABLE;
 
@@ -163,13 +164,13 @@ namespace USBCANBridge {
      * Defines the different operating modes for the CAN controller.
      * Besides NORMAL mode, other modes are useful for testing and diagnostics rather than regular operation.
      * @note Available CAN modes are:
-     * 
+     *
      * - NORMAL: Standard operation for normal bus communication.
-     * 
+     *
      * - LOOPBACK: Used for internal testing without affecting the bus.
-     * 
+     *
      * - SILENT: Listen-only mode, useful for monitoring bus traffic without transmitting.
-     * 
+     *
      * - LOOPBACK_SILENT: Combination of loopback and silent modes for testing
      *   without bus impact.
      * <<< Recommended: NORMAL >>>

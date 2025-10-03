@@ -83,7 +83,7 @@ namespace USBCANBridge {
  *       directly without specialization. All concrete frame types must provide
  *       explicit specializations with the required interface.
  */
-    template<typename Derived>
+    template<typename Frame>
     struct FrameTraits {
         static constexpr std::size_t FRAME_SIZE = 0;
         using StorageType = void; // Intentionally void to prevent usage

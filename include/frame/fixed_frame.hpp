@@ -34,8 +34,7 @@ namespace USBCANBridge {
      */
 
     class FixedFrame :
-        public DataInterface<FixedFrame>,
-        public ChecksumInterface<FixedFrame> {
+        public DataInterface<FixedFrame> {
         // * Alias for traits
         using traits = frame_traits_t<FixedFrame>;
         using layout = layout_t<FixedFrame>;
@@ -43,9 +42,7 @@ namespace USBCANBridge {
 
         public:
             // * Constructors
-            FixedFrame() : DataInterface<FixedFrame>(), ChecksumInterface<FixedFrame>() {
-                // Initialize constant fields
-                impl_init_fields();
+            FixedFrame() : DataInterface<FixedFrame>() {
             }
 
             // === Core impl_*() Methods ===
@@ -59,7 +56,7 @@ namespace USBCANBridge {
              *
              * @note For a FixedFrame, the following fields are initialized:
              *
-             * - `[START]` = `Constants::START_BYTE`
+             * - `[START]` = `Constants::START_BYTE` (already set in CoreInterface)
              *
              * - `[HEADER]` = `Constants::HEADER`
              *
@@ -72,8 +69,6 @@ namespace USBCANBridge {
              * - `[RESERVED]` = `Constants::RESERVED`
              */
             void impl_init_fields() {
-                // * Set the Start byte
-                frame_storage_[layout::START_OFFSET] = to_byte(Constants::START_BYTE);
                 // * Set the Header byte
                 frame_storage_[layout::HEADER_OFFSET] = to_byte(Constants::HEADER);
                 // * Set the Type byte

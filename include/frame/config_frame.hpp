@@ -33,18 +33,19 @@ namespace USBCANBridge {
      * @see File: README.md for frame structure details.
      */
     class ConfigFrame :
-        public ConfigInterface<ConfigFrame>,
-        public ChecksumInterface<ConfigFrame> {
-        // * Alias for traits
-        using traits = frame_traits_t<ConfigFrame>;
-        using layout = layout_t<ConfigFrame>;
-        using storage = storage_t<ConfigFrame>;
-
+        public ConfigInterface<ConfigFrame> {
+        public:
+            // * Alias for traits
+            using traits = frame_traits_t<ConfigFrame>;
+            using layout = layout_t<ConfigFrame>;
+            using storage = storage_t<ConfigFrame>;
+        private:
+            // * Checksum Interface
+            ChecksumInterface<ConfigFrame> checksum_interface_;
         public:
             // * Constructors
-            ConfigFrame() : ConfigInterface<ConfigFrame>(), ChecksumInterface<ConfigFrame>() {
-                // Initialize constant fields
-                impl_init_fields();
+            ConfigFrame() : ConfigInterface<ConfigFrame>(), checksum_interface_(*this) {
+
             }
 
             // === Core impl_*() Methods ===
@@ -83,7 +84,7 @@ namespace USBCANBridge {
                     frame_storage_[layout::RESERVED_OFFSET + i] = to_byte(Constants::RESERVED);
                 }
                 // Mark checksum as dirty since we changed the frame
-                this->mark_dirty();
+                checksum_interface_.mark_dirty();
                 return Result<void>::success();
             }
 
@@ -135,10 +136,19 @@ namespace USBCANBridge {
                 return Result<std::size_t>::success(traits::FRAME_SIZE);
             }
 
-
-
-
             // === ConfigFrame impl_*() Methods ===
+            /**
+             * @brief Get the FrameType from the internal storage.
+             *
+             * @return Result<FrameType> The FrameType, or an error status on failure.
+             */
+            Result<FrameType> impl_get_frame_type() const;
+            /**
+             * @brief Set the FrameType in the internal storage.
+             * @param type The FrameType to set.
+             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
+             */
+            Result<void> impl_set_frame_type(FrameType type);
             /**
              * @brief Get the CAN baud rate from the internal storage.
              * @return Result<CANBaud> The CAN baud rate, or an error status on failure.

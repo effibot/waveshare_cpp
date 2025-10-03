@@ -13,29 +13,52 @@
 #include "core.hpp"
 #include "config_validator.hpp"
 namespace USBCANBridge {
-    template<typename Derived>
-    class ConfigInterface : public CoreInterface<Derived>, public ConfigValidator<Derived> {
+    template<typename Frame>
+    class ConfigInterface : public CoreInterface<Frame> {
         // * Ensure that Derived is ConfigFrame
-        static_assert(is_config_frame_v<Derived>,
+        static_assert(is_config_frame_v<Frame>,
             "Derived must be a config frame type");
         protected:
+            // * Get validator instance for config operations
+            ConfigValidator<Frame> config_validator_;
+
             // * Prevent this class from being instantiated directly
-            ConfigInterface() : CoreInterface<Derived>() {
-                static_assert(!std::is_same_v<Derived, ConfigInterface>,
+            ConfigInterface() : CoreInterface<Frame>(), config_validator_(this->derived()) {
+                static_assert(!std::is_same_v<Frame, ConfigInterface>,
                     "ConfigInterface cannot be instantiated directly");
+                // Initialize constant fields
+                this->derived().impl_init_fields();
             }
 
+
         public:
+            // <<< Decorate serialize to use checksum_interface_ >>>
+            /**
+             * @brief Decoration of CoreInterface::serialize to use checksum_interface_.
+             *
+             * @param buffer
+             * @return  Result<span<const std::byte> > A span representing the serialized frame data. The length of the span is fixed to FRAME_SIZE for fixed-size frames, or the current size for variable-size frames.
+             */
+            Result<span<const std::byte> > serialize(span<std::byte> buffer) const {
+                // Update checksum before serialization
+                auto checksum_res = this->derived().update_checksum();
+                if (!checksum_res) {
+                    return Result<void>::error(checksum_res.error(), "ConfigInterface::serialize");
+                }
+                // Call the base class serialize method
+                return CoreInterface<Frame>::serialize(buffer);
+            }
+
             // === Configuration Methods ===
             /**
              * @brief Set the CAN bus baud rate to be used by the USB adapter.
              * @param baud_rate The baud rate to set.
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_baud_rate(CANBaud baud_rate) {
-                auto valid = this->validateBaudRate(baud_rate);
+                auto valid = config_validator_.validateBaudRate(baud_rate);
                 if (!valid) {
                     return Result<void>::error(Status::WBAD_CAN_BAUD,
                         "ConfigInterface::set_baud_rate");
@@ -46,7 +69,7 @@ namespace USBCANBridge {
              * @brief Get the baud rate currently set in the configuration frame.
              * @return Result<CANBaud> The current baud rate, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<CANBaud> >
             get_baud_rate() const {
                 return this->derived().impl_get_baud_rate();
@@ -56,10 +79,10 @@ namespace USBCANBridge {
              * @param mode The CAN mode to set.
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_can_mode(CANMode mode) {
-                auto valid = this->validateCanMode(mode);
+                auto valid = config_validator_.validateCanMode(mode);
                 if (!valid) {
                     return Result<void>::error(Status::WBAD_CAN_MODE,
                         "ConfigInterface::set_can_mode");
@@ -70,7 +93,7 @@ namespace USBCANBridge {
              * @brief Get the CAN mode currently set in the configuration frame.
              * @return Result<CANMode> The current CAN mode, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<CANMode> >
             get_can_mode() const {
                 return this->derived().impl_get_can_mode();
@@ -80,10 +103,10 @@ namespace USBCANBridge {
              * @param filter The acceptance filter to set.
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_filter(uint32_t filter) {
-                auto valid = this->validateFilter(filter);
+                auto valid = config_validator_.validateFilter(filter);
                 if (!valid) {
                     return Result<void>::error(Status::WBAD_FILTER, "ConfigInterface::set_filter");
                 }
@@ -93,7 +116,7 @@ namespace USBCANBridge {
              * @brief Get the acceptance filter currently set in the configuration frame.
              * @return Result<uint32_t> The current acceptance filter, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<uint32_t> >
             get_filter() const {
                 return this->derived().impl_get_filter();
@@ -103,10 +126,10 @@ namespace USBCANBridge {
              * @param mask The acceptance mask to set.
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_mask(uint32_t mask) {
-                auto valid = this->validateMask(mask);
+                auto valid = config_validator_.validateMask(mask);
                 if (!valid) {
                     return Result<void>::error(Status::WBAD_MASK, "ConfigInterface::set_mask");
                 }
@@ -116,7 +139,7 @@ namespace USBCANBridge {
              * @brief Get the acceptance mask currently set in the configuration frame.
              * @return Result<uint32_t> The current acceptance mask, or an error status on failure.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<uint32_t> >
             get_mask() const {
                 return this->derived().impl_get_mask();
@@ -125,10 +148,10 @@ namespace USBCANBridge {
              * @brief Enable or disable automatic retransmission of CAN frames.
              * @param auto_rtx RTX::ENABLED to enable, RTX::DISABLED to disable.
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             */template<typename T = Derived>
+             */template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_auto_rtx(RTX auto_rtx) {
-                auto valid = this->validateRTX(auto_rtx);
+                auto valid = config_validator_.validateRtx(auto_rtx);
                 if (!valid) {
                     return Result<void>::error(Status::WBAD_RTX, "ConfigInterface::set_auto_rtx");
                 }
@@ -137,10 +160,12 @@ namespace USBCANBridge {
             /**
              * @brief Get the current automatic retransmission setting.
              * @return Result<RTX> RTX::ENABLED if enabled, RTX::DISABLED if disabled, or an error status on failure.
-             */template<typename T = Derived>
+             */template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<RTX> >
             get_auto_rtx() const {
                 return this->derived().impl_get_auto_rtx();
             }
+
+
     };
 }

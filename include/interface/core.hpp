@@ -20,35 +20,48 @@
 #include "../template/frame_traits.hpp"
 
 #include "core_validator.hpp"
+#include "checksum.hpp"
 
 using namespace boost;
 
 namespace USBCANBridge {
-
-
-    template<typename Derived>
-    class CoreInterface : public CoreValidator<Derived> {
+    /**
+     * @brief Core interface for all frame types
+     * This class provides common methods and utilities for all frame types.
+     * @tparam Frame The frame type to interface with.
+     */
+    template<typename Frame>
+    class CoreInterface {
         // * Alias for traits
-        using traits = frame_traits_t<Derived>;
-        using layout = layout_t<Derived>;
-        using storage = storage_t<Derived>;
+        using traits = frame_traits_t<Frame>;
+        using layout = layout_t<Frame>;
+        using storage = storage_t<Frame>;
 
         protected:
-
-            // * CRTP helper to access derived class methods
-            Derived& derived() {
-                return static_cast<Derived&>(*this);
-            }
-            // * CRTP helper to access derived class methods (const version)
-            const Derived& derived() const {
-                return static_cast<const Derived&>(*this);
-            }
             // * Storage for the frame data
             alignas(8) mutable storage frame_storage_{};
 
+            // * Reference to a CoreValidator instance
+            CoreValidator<Frame> validator_;
+
+            // * CRTP helper to access derived class methods
+            Frame& derived() {
+                return static_cast<Frame&>(*this);
+            }
+
+            // * CRTP helper to access derived class methods (const version)
+            const Frame& derived() const {
+                return static_cast<const Frame&>(*this);
+            }
+
+            // * Get validator instance for core operations
+            CoreValidator<Frame> get_core_validator() const {
+                return validator_;
+            }
+
             // * Prevent this class from being instantiated directly
-            CoreInterface() {
-                static_assert(!std::is_same_v<Derived, CoreInterface>,
+            CoreInterface() : validator_(derived()) {
+                static_assert(!std::is_same_v<Frame, CoreInterface>,
                     "CoreInterface cannot be instantiated directly");
                 init_fields();
             }
@@ -78,10 +91,10 @@ namespace USBCANBridge {
              * @note This is common for all frame types and does't call derived().
              * @return Result<span<std::byte> > A span representing the serialized frame data. The length of the span is fixed to FRAME_SIZE for fixed-size frames, or the current size for variable-size frames.
              */
-            template<typename T = Derived, size_t N>
+            template<typename T = Frame, size_t N>
             Result<span<const std::byte, N> > serialize() const {
                 size_t current_size;
-                if constexpr (!is_variable_frame_v<T> ) {
+                if constexpr (!is_variable_frame_v<T>) {
                     current_size = layout::FRAME_SIZE;
                 } else {
                     current_size = derived().impl_size().value();
@@ -96,18 +109,8 @@ namespace USBCANBridge {
              * @note This is common for all frame types and does't call derived().
              * @return Result<span<std::byte> > A span representing the serialized frame data. The length of the span is fixed to FRAME_SIZE for fixed-size frames, or the current size for variable-size frames.
              */
-            template<typename T = Derived, size_t N>
+            template<typename T = Frame, size_t N>
             Result<span<std::byte, N> > serialize() {
-                // * If the frame has a checksum and it's dirty, update it
-                if constexpr (has_checksum_v<T> ) {
-                    if (this->is_checksum_dirty()) {
-                        auto res = this->update_checksum();
-                        if (!res) {
-                            return Result<span<std::byte, N> >::error(res.error(),
-                                "CoreInterface::serialize");
-                        }
-                    }
-                }
                 // * Determine current size
                 size_t current_size = size().value();
                 // * Return the serialized frame data
@@ -125,7 +128,7 @@ namespace USBCANBridge {
              */
             Result<void> deserialize(span<const std::byte> data) {
                 // * validate the input data
-                auto result = this->validate(data);
+                auto result = validator_.validate(data);
                 if (!result) {
                     return Result<void>::error(result.error(), "CoreInterface::deserialize");
                 }
@@ -155,16 +158,16 @@ namespace USBCANBridge {
              * @note This calls derived().to_string() for frame-specific string conversion.
              */
             Result<std::string> to_string() const {
-                return dump_frame<Derived>(frame_storage_);
+                return dump_frame<Frame>(frame_storage_);
             }
             /**
              * @brief Get the size of the frame in bytes.
              * @note If the frame has a fixed size, this returns that size. If variable, it calls derived() to compute the size.
              * @return Result<std::size_t> The size of the frame in bytes.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             Result<std::size_t> size() const {
-                if  constexpr (!is_variable_frame_v<T> ) {
+                if  constexpr (!is_variable_frame_v<T>) {
                     return Result<std::size_t>(traits::FRAME_SIZE);
                 }
                 return derived().impl_size();
@@ -186,10 +189,10 @@ namespace USBCANBridge {
              * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              * @note This calls derived().set_type() for frame-specific type setting.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<!is_variable_frame_v<T>, Result<void> >
             set_type(Type type) {
-                auto res = this->validate_type(to_byte(type));
+                auto res = validator_.validate_type_byte(to_byte(type));
                 if (!res) {
                     return res.error();
                 }
@@ -200,15 +203,39 @@ namespace USBCANBridge {
              * @return Result<Type> The Type byte of the frame.
              * @note This calls derived().get_type() for frame-specific type retrieval.
              */
-            template<typename T = Derived>
+            template<typename T = Frame>
             std::enable_if_t<is_variable_frame_v<T>, Result<void> >
             set_type(std::byte type) {
-                auto res = this->validate_type(type);
+                auto res = validator_.validate_type_byte(type);
                 if (!res) {
                     return res.error();
                 }
                 return derived().impl_set_type(type);
             }
 
+            /**
+             * @brief Get the FrameType byte of the frame.
+             * @return Result<FrameType> The FrameType byte of the frame.
+             * @note This calls derived().get_frame_type() for frame-specific frame type retrieval.
+             */
+            Result<FrameType> get_frame_type() const {
+                return derived().impl_get_frame_type();
+            }
+            /**
+             * @brief Set the FrameType byte of the frame.
+             * @param frame_type The FrameType byte to set.
+             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
+             * @note This calls derived().set_frame_type() for frame-specific frame type setting.
+             */
+            template<typename T = Frame>
+            std::enable_if_t<is_variable_frame_v<T>, Result<void> >
+            set_frame_type(FrameType frame_type) {
+                auto res = validator_.validate_frame_type(frame_type);
+                if (!res) {
+                    return res.error();
+                }
+                return derived().impl_set_frame_type(frame_type);
+            }
     };
 }
+

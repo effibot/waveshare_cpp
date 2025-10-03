@@ -7,7 +7,7 @@
  */
 
 #pragma once
-#include "error.hpp"
+#include "../enums/error.hpp"
 #include <string>
 #include <variant>
 
