@@ -17,11 +17,14 @@ namespace USBCANBridge {
             "Frame must be a frame type with checksum");
 
 
+        // * Alias for the frame reference
+        using frame_t = CoreInterface<Frame>;
+
         private:
-            const Frame* frame_;
+            const frame_t frame_;
             mutable bool dirty_ = true;
 
-            const Frame* get_frame() const {
+            const frame_t& get_frame() const {
                 return frame_;
             }
 
@@ -55,14 +58,15 @@ namespace USBCANBridge {
                         return acc + static_cast<uint8_t>(b);
                     });
                 return Result<std::byte>::success(static_cast<std::byte>(sum & 0xFF));
-            }            /**
-                          * @brief Core logic to verify checksum from raw data.
-                          * @param data The raw data to verify checksum for
-                          * @param checksum_index Index where the stored checksum is located
-                          * @param start_index Starting index for checksum calculation
-                          * @param end_index Ending index for checksum calculation
-                          * @return True if checksums match, false otherwise
-                          */
+            }
+            /**
+             * @brief Core logic to verify checksum from raw data.
+             * @param data The raw data to verify checksum for
+             * @param checksum_index Index where the stored checksum is located
+             * @param start_index Starting index for checksum calculation
+             * @param end_index Ending index for checksum calculation
+             * @return True if checksums match, false otherwise
+             */
             static Result<bool> verify_checksum_impl(
                 span<const std::byte> data,
                 size_t checksum_index,

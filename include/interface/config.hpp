@@ -58,11 +58,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_baud_rate(CANBaud baud_rate) {
-                auto valid = config_validator_.validateBaudRate(baud_rate);
-                if (!valid) {
-                    return Result<void>::error(Status::WBAD_CAN_BAUD,
-                        "ConfigInterface::set_baud_rate");
-                }
                 return this->derived().impl_set_baud_rate(baud_rate);
             }
             /**
@@ -82,11 +77,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_can_mode(CANMode mode) {
-                auto valid = config_validator_.validateCanMode(mode);
-                if (!valid) {
-                    return Result<void>::error(Status::WBAD_CAN_MODE,
-                        "ConfigInterface::set_can_mode");
-                }
                 return this->derived().impl_set_can_mode(mode);
             }
             /**
@@ -106,10 +96,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_filter(uint32_t filter) {
-                auto valid = config_validator_.validateFilter(filter);
-                if (!valid) {
-                    return Result<void>::error(Status::WBAD_FILTER, "ConfigInterface::set_filter");
-                }
                 return this->derived().impl_set_filter(filter);
             }
             /**
@@ -129,10 +115,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_mask(uint32_t mask) {
-                auto valid = config_validator_.validateMask(mask);
-                if (!valid) {
-                    return Result<void>::error(Status::WBAD_MASK, "ConfigInterface::set_mask");
-                }
                 return this->derived().impl_set_mask(mask);
             }
             /**
@@ -151,10 +133,6 @@ namespace USBCANBridge {
              */template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, Result<void> >
             set_auto_rtx(RTX auto_rtx) {
-                auto valid = config_validator_.validateRtx(auto_rtx);
-                if (!valid) {
-                    return Result<void>::error(Status::WBAD_RTX, "ConfigInterface::set_auto_rtx");
-                }
                 return this->derived().impl_set_auto_rtx(auto_rtx);
             }
             /**

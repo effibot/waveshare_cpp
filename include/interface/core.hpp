@@ -41,9 +41,6 @@ namespace USBCANBridge {
             // * Storage for the frame data
             alignas(8) mutable storage frame_storage_{};
 
-            // * Reference to a CoreValidator instance
-            CoreValidator<Frame> validator_;
-
             // * CRTP helper to access derived class methods
             Frame& derived() {
                 return static_cast<Frame&>(*this);
@@ -54,13 +51,8 @@ namespace USBCANBridge {
                 return static_cast<const Frame&>(*this);
             }
 
-            // * Get validator instance for core operations
-            CoreValidator<Frame> get_core_validator() const {
-                return validator_;
-            }
-
             // * Prevent this class from being instantiated directly
-            CoreInterface() : validator_(derived()) {
+            CoreInterface() {
                 static_assert(!std::is_same_v<Frame, CoreInterface>,
                     "CoreInterface cannot be instantiated directly");
                 init_fields();
@@ -127,13 +119,8 @@ namespace USBCANBridge {
              * @note This calls derived().deserialize() for frame-specific deserialization.
              */
             Result<void> deserialize(span<const std::byte> data) {
-                // * validate the input data
-                auto result = validator_.validate(data);
-                if (!result) {
-                    return Result<void>::error(result.error(), "CoreInterface::deserialize");
-                }
                 // * call derived class to perform deserialization
-                result = derived().impl_deserialize(data);
+                auto result = derived().impl_deserialize(data);
                 if (!result) {
                     return Result<void>::error(result.error(), "CoreInterface::deserialize");
                 }
@@ -192,10 +179,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<!is_variable_frame_v<T>, Result<void> >
             set_type(Type type) {
-                auto res = validator_.validate_type_byte(to_byte(type));
-                if (!res) {
-                    return res.error();
-                }
                 return derived().impl_set_type(type);
             }
             /**
@@ -206,10 +189,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_variable_frame_v<T>, Result<void> >
             set_type(std::byte type) {
-                auto res = validator_.validate_type_byte(type);
-                if (!res) {
-                    return res.error();
-                }
                 return derived().impl_set_type(type);
             }
 
@@ -230,10 +209,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_variable_frame_v<T>, Result<void> >
             set_frame_type(FrameType frame_type) {
-                auto res = validator_.validate_frame_type(frame_type);
-                if (!res) {
-                    return res.error();
-                }
                 return derived().impl_set_frame_type(frame_type);
             }
     };

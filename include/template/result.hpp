@@ -1,8 +1,8 @@
 /**
  * @file result.hpp
- * @brief Enhanced Result type with operation context for better error reporting.
- * @version 2.0
- * @date 2025-09-29
+ * @brief Enhanced Result type with automatic error chaining for better error reporting.
+ * @version 3.0
+ * @date 2025-10-03
  * @copyright Copyright (c) 2025
  */
 
@@ -10,15 +10,16 @@
 #include "../enums/error.hpp"
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace USBCANBridge {
 
 /**
- * @brief Enhanced Result type with operation context.
+ * @brief Enhanced Result type with automatic error chaining.
  *
- * Wraps a value of type T or an error status with optional operation context
- * for better error reporting and debugging. Maintains the existing interface
- * while adding enhanced error descriptions.
+ * Wraps a value of type T or an error status with automatic error context chaining.
+ * When an error is propagated through error(), it automatically builds a call stack
+ * for better debugging and error reporting.
  *
  * @tparam T The type of the value being returned.
  */
@@ -26,7 +27,7 @@ namespace USBCANBridge {
     class Result {
         private:
             std::variant<T, Status> value_or_error_;
-            std::string operation_context_;
+            std::vector<std::string> error_chain_;
 
         public:
             // Default constructor with error status
@@ -64,31 +65,59 @@ namespace USBCANBridge {
                 return fail() ? std::get<Status>(value_or_error_) : Status::SUCCESS;
             }
 
-            // Enhanced error reporting
+            // Enhanced error reporting with full chain
             std::string describe() const {
                 if (ok()) return "Success";
-                const auto status = std::get<Status>(value_or_error_);
-                return operation_context_.empty() ?
-                       "Error" : // Could use status_to_string(status) if available
-                       operation_context_ + ": Error";
+
+                std::string result = "Error";
+                if (!error_chain_.empty()) {
+                    result += " [";
+                    for (size_t i = 0; i < error_chain_.size(); ++i) {
+                        if (i > 0) result += " -> ";
+                        result += error_chain_[i];
+                    }
+                    result += "]";
+                }
+                return result;
             }
 
             std::string to_string() const {
                 return describe();
             }
 
+            // Get the full error chain
+            const std::vector<std::string>& error_chain() const {
+                return error_chain_;
+            }
+
             // Factory methods with context
             static Result success(T val, const std::string& op = "") {
                 Result r;
                 r.value_or_error_ = std::move(val);
-                r.operation_context_ = op;
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
                 return r;
             }
 
             static Result error(Status status, const std::string& op = "") {
                 Result r;
                 r.value_or_error_ = status;
-                r.operation_context_ = op;
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
+                return r;
+            }
+
+            // Automatic error chaining - propagate error from another Result
+            template<typename U>
+            static Result error(const Result<U>& failed_result, const std::string& op = "") {
+                Result r;
+                r.value_or_error_ = failed_result.error();
+                r.error_chain_ = failed_result.error_chain();
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
                 return r;
             }
 
@@ -97,7 +126,7 @@ namespace USBCANBridge {
             auto and_then(F&& func) -> Result<std::invoke_result_t<F, T> > {
                 using ReturnType = std::invoke_result_t<F, T>;
                 if (fail()) {
-                    return Result<ReturnType>::error(error(), operation_context_);
+                    return Result<ReturnType>::error(*this, "");
                 }
                 return func(value());
             }
@@ -110,7 +139,7 @@ namespace USBCANBridge {
     class Result<void> {
         private:
             Status status_ = Status::SUCCESS;
-            std::string operation_context_;
+            std::vector<std::string> error_chain_;
 
         public:
             // Existing interface preserved for compatibility
@@ -135,30 +164,59 @@ namespace USBCANBridge {
                 return status_;
             }
 
-            // Enhanced error reporting
+            // Enhanced error reporting with full chain
             std::string describe() const {
                 if (ok()) return "Success";
-                return operation_context_.empty() ?
-                       "Error" :
-                       operation_context_ + ": Error";
+
+                std::string result = "Error";
+                if (!error_chain_.empty()) {
+                    result += " [";
+                    for (size_t i = 0; i < error_chain_.size(); ++i) {
+                        if (i > 0) result += " -> ";
+                        result += error_chain_[i];
+                    }
+                    result += "]";
+                }
+                return result;
             }
 
             std::string to_string() const {
                 return describe();
             }
 
+            // Get the full error chain
+            const std::vector<std::string>& error_chain() const {
+                return error_chain_;
+            }
+
             // Factory methods with context
             static Result success(const std::string& op = "") {
                 Result r;
                 r.status_ = Status::SUCCESS;
-                r.operation_context_ = op;
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
                 return r;
             }
 
             static Result error(Status status, const std::string& op = "") {
                 Result r;
                 r.status_ = status;
-                r.operation_context_ = op;
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
+                return r;
+            }
+
+            // Automatic error chaining - propagate error from another Result
+            template<typename U>
+            static Result error(const Result<U>& failed_result, const std::string& op = "") {
+                Result r;
+                r.status_ = failed_result.error();
+                r.error_chain_ = failed_result.error_chain();
+                if (!op.empty()) {
+                    r.error_chain_.push_back(op);
+                }
                 return r;
             }
     };

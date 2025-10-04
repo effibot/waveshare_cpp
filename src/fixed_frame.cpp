@@ -1,4 +1,4 @@
-#include "../include/fixed_frame.hpp"
+#include "../include/frame/fixed_frame.hpp"
 #include <algorithm>
 
 namespace USBCANBridge {
@@ -134,7 +134,7 @@ namespace USBCANBridge {
     Result<uint32_t> FixedFrame::impl_get_can_id() const {
         auto frame_type_result = get_frame_type();
         if (!frame_type_result) {
-            return Result<uint32_t>::error(frame_type_result.error(), "get_can_id");
+            return Result<uint32_t>::error(frame_type_result, "get_can_id");
         }
 
         FrameType frame_type = frame_type_result.value();
