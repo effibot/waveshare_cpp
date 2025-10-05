@@ -53,7 +53,10 @@
 #include <cstddef>
 #include <type_traits>
 #include <vector>
-//#include <boost/core/span.hpp>
+#include <boost/core/span.hpp>
+
+using namespace boost;
+
 /**
  * @namespace USBCANBridge
  * @brief Namespace containing all USB-CAN bridge related functionality.
@@ -86,6 +89,7 @@ namespace USBCANBridge {
     template<typename Frame>
     struct FrameTraits {
         static constexpr std::size_t FRAME_SIZE = 0;
+        std::array<std::byte, 0> frame_buffer = {}; // Intentionally empty to prevent usage
         using StorageType = void; // Intentionally void to prevent usage
         struct Layout {}; // Empty layout to prevent usage
     };
@@ -100,7 +104,9 @@ namespace USBCANBridge {
     template<>
     struct FrameTraits<FixedFrame> {
         static constexpr std::size_t FRAME_SIZE = 20;
+        alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
         using StorageType = std::array<std::byte, FRAME_SIZE>;
+
 
         /**
          * @brief 20-byte Fixed frame byte layout.
@@ -137,8 +143,9 @@ namespace USBCANBridge {
         static constexpr std::size_t MIN_DATA_SIZE = 0;
         static constexpr std::size_t MAX_ID_SIZE = 4; // Extended ID
         static constexpr std::size_t MIN_ID_SIZE = 2; // Standard ID
+        alignas(8) std::vector<std::byte> frame_buffer = std::vector<std::byte>(MIN_FRAME_SIZE);
+        using StorageType = span<std::byte>; // Dynamic size
 
-        using StorageType = std::vector<std::byte>;
 
         /**
          * @brief Dynamic layout with helper functions for runtime calculations.
@@ -173,7 +180,9 @@ namespace USBCANBridge {
     template<>
     struct FrameTraits<ConfigFrame> {
         static constexpr std::size_t FRAME_SIZE = 20;
-        using StorageType = std::array<std::byte, FRAME_SIZE>;
+        alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
+        using StorageType = span<std::byte, FRAME_SIZE>;
+
 
         /**
          * @brief Configuration-specific byte layout.
@@ -204,7 +213,7 @@ namespace USBCANBridge {
 // Frame categorization for SFINAE
     template<typename T>
     struct is_data_frame : std::bool_constant<
-            std::is_same_v<T, FixedFrame> || std::is_same_v<T, VariableFrame>
+            std::is_same_v<T, FixedFrame>|| std::is_same_v<T, VariableFrame>
         > {};
 
     template<typename T>
@@ -218,7 +227,7 @@ namespace USBCANBridge {
 
     template<typename T>
     struct has_checksum : std::bool_constant<
-            std::is_same_v<T, FixedFrame> || std::is_same_v<T, ConfigFrame>
+            std::is_same_v<T, FixedFrame>|| std::is_same_v<T, ConfigFrame>
         > {};
 
     template<typename T>

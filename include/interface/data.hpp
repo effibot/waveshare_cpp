@@ -1,6 +1,6 @@
 #pragma once
 #include "core.hpp"
-#include "data_validator.hpp"
+#include "validator/data_validator.hpp"
 #include <type_traits>
 
 namespace USBCANBridge {
@@ -16,16 +16,11 @@ namespace USBCANBridge {
             "Derived must be a data frame type");
 
         protected:
-            // * Get validator instance for data operations
-            DataValidator<Frame> get_data_validator() const {
-                return DataValidator<Frame>(this->derived());
-            }
 
             // * Prevent this class from being instantiated directly
             DataInterface() : CoreInterface<Frame>() {
                 static_assert(!std::is_same_v<Frame, DataInterface>,
                     "DataInterface cannot be instantiated directly");
-                this->derived().impl_init_fields();
             }
         public:
             // <<< Decorate serialize to use checksum_interface_ >>>
@@ -102,12 +97,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_format(FrameFormat format) {
-                auto validator = get_data_validator();
-                auto validate = validator.validate_format(format);
-                if (!validate) {
-                    return Result<void>::error(validate.error(),
-                        "DataInterface::set_format");
-                }
                 return this->derived().impl_set_format(format);
             }
 
@@ -134,12 +123,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_id(std::uint32_t id) {
-                auto validator = get_data_validator();
-                auto validate = validator.validate_can_id(id);
-                if (!validate) {
-                    return Result<void>::error(validate.error(),
-                        "DataInterface::set_id");
-                }
                 return this->derived().impl_set_id(id);
             }
             /**
@@ -184,12 +167,6 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, Result<void> >
             set_data(span<const std::byte> data) {
-                auto validator = get_data_validator();
-                auto validate = validator.validate_data_length(data.size());
-                if (!validate) {
-                    return Result<void>::error(validate.error(),
-                        "DataInterface::set_data");
-                }
                 auto res = this->derived().impl_set_data(data);
                 if (!res) {
                     return Result<void>::error(res.error(),

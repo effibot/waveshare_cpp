@@ -16,15 +16,15 @@ namespace USBCANBridge {
         static_assert(has_checksum_v<Frame>,
             "Frame must be a frame type with checksum");
 
-
-        // * Alias for the frame reference
-        using frame_t = CoreInterface<Frame>;
+        // * Type aliases
+        using layout = layout_t<Frame>;
 
         private:
-            const frame_t frame_;
+
+            Frame& frame_;
             mutable bool dirty_ = true;
 
-            const frame_t& get_frame() const {
+            const Frame& get_frame() const {
                 return frame_;
             }
 
@@ -118,9 +118,10 @@ namespace USBCANBridge {
              * @brief Construct a ChecksumInterface for the given frame.
              * @param frame The frame to associate with this ChecksumInterface.
              */
-            explicit ChecksumInterface(const Frame& frame) : frame_(&frame) {
+            ChecksumInterface(Frame& frame) : frame_(frame) {
                 mark_dirty();
             }
+            // === Utility Methods to Set/Unset Dirty bit ===
             /**
              * @brief Check if the stored checksum is dirty (i.e., needs to be recomputed).
              *
@@ -137,7 +138,7 @@ namespace USBCANBridge {
                 dirty_ = true;
             }
 
-
+            // === Concrete Checksum Operations ===
             /**
              * @brief Compute the checksum of the frame, given its internal state.
              * The algorithm performs a sum of the interested bytes and takes the lowest 8 bits.
@@ -149,15 +150,15 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<has_checksum_v<T>, Result<std::byte> >
             compute_checksum() const {
-                auto raw_data = this->get_frame()->serialize();
+                auto raw_data = this->get_frame().serialize();
                 if (!raw_data) {
-                    return raw_data.error();
+                    return Result<std::byte>::error(raw_data.error());
                 }
 
                 return compute_checksum_impl(
                     raw_data.value(),
-                    this->get_frame()->layout::TYPE_OFFSET,
-                    this->get_frame()->layout::CHECKSUM_OFFSET
+                    layout::TYPE_OFFSET,
+                    layout::CHECKSUM_OFFSET
                 );
             }
 
@@ -199,16 +200,16 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<has_checksum_v<T>, Result<bool> >
             verify_checksum() const {
-                auto raw_data = this->get_frame()->serialize();
+                auto raw_data = this->get_frame().serialize();
                 if (!raw_data) {
-                    return raw_data.error();
+                    return Result<bool>::error(raw_data.error());
                 }
 
                 return verify_checksum_impl(
                     raw_data.value(),
-                    this->get_frame()->layout::CHECKSUM_OFFSET,
-                    this->get_frame()->layout::TYPE_OFFSET,
-                    this->get_frame()->layout::CHECKSUM_OFFSET
+                    layout::CHECKSUM_OFFSET,
+                    layout::TYPE_OFFSET,
+                    layout::CHECKSUM_OFFSET
                 );
             }
 
@@ -251,22 +252,22 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<has_checksum_v<T>, Result<void> >
-            update_checksum() {
+            update_checksum() const {
                 if (!this->is_dirty()) {
                     return Result<void>::success(); // No need to update if not dirty
                 }
 
-                auto raw_data = this->get_frame()->serialize();
+                auto raw_data = this->get_frame().get_mutable_storage();
                 if (!raw_data) {
-                    return raw_data.error();
+                    return Result<void>::error(raw_data.error());
                 }
-                auto& data = raw_data.value();
+                auto* data_ptr = raw_data.value();
 
                 auto result = update_checksum_impl(
-                    data,
-                    this->get_frame()->layout::CHECKSUM_OFFSET,
-                    this->get_frame()->layout::TYPE_OFFSET,
-                    this->get_frame()->layout::CHECKSUM_OFFSET
+                    *data_ptr,
+                    layout::CHECKSUM_OFFSET,
+                    layout::TYPE_OFFSET,
+                    layout::CHECKSUM_OFFSET
                 );
 
                 if (result) {

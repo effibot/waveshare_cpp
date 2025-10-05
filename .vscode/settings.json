@@ -149,6 +149,7 @@
     "typeinfo": "cpp",
     "valarray": "cpp",
     "variant": "cpp",
-    "expected": "cpp"
+    "expected": "cpp",
+    "spanstream": "cpp"
   }
 }

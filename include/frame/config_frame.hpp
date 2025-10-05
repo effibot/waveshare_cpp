@@ -40,11 +40,14 @@ namespace USBCANBridge {
             using layout = layout_t<ConfigFrame>;
             using storage = storage_t<ConfigFrame>;
         private:
-            // * Checksum Interface
+            // * Composition with ChecksumInterface
             ChecksumInterface<ConfigFrame> checksum_interface_;
+
         public:
             // * Constructors
             ConfigFrame() : ConfigInterface<ConfigFrame>(), checksum_interface_(*this) {
+                // Initialize constant fields
+                this->impl_init_fields();
 
             }
 
@@ -126,7 +129,7 @@ namespace USBCANBridge {
              * @param data The buffer to validate.
              * @return Result<bool> indicating whether the frame is valid.
              */
-            Result<bool> impl_validate(span<const std::byte> data) const;
+            //Result<bool> impl_validate(span<const std::byte> data) const;
             /**
              * @brief Get the size of the frame in bytes.
              *
@@ -211,5 +214,10 @@ namespace USBCANBridge {
              * @return Result<RTX> The current auto retransmission setting, or an error status on failure.
              */
             Result<RTX> impl_get_auto_rtx() const;
+
+            // * Composition with ChecksumInterface
+            Result<void> update_checksum() const {
+                return checksum_interface_.update_checksum();
+            }
     };
 }

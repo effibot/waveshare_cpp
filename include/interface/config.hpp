@@ -11,7 +11,6 @@
 
 #pragma once
 #include "core.hpp"
-#include "config_validator.hpp"
 namespace USBCANBridge {
     template<typename Frame>
     class ConfigInterface : public CoreInterface<Frame> {
@@ -19,15 +18,11 @@ namespace USBCANBridge {
         static_assert(is_config_frame_v<Frame>,
             "Derived must be a config frame type");
         protected:
-            // * Get validator instance for config operations
-            ConfigValidator<Frame> config_validator_;
 
             // * Prevent this class from being instantiated directly
-            ConfigInterface() : CoreInterface<Frame>(), config_validator_(this->derived()) {
+            ConfigInterface() : CoreInterface<Frame>() {
                 static_assert(!std::is_same_v<Frame, ConfigInterface>,
                     "ConfigInterface cannot be instantiated directly");
-                // Initialize constant fields
-                this->derived().impl_init_fields();
             }
 
 
@@ -36,17 +31,16 @@ namespace USBCANBridge {
             /**
              * @brief Decoration of CoreInterface::serialize to use checksum_interface_.
              *
-             * @param buffer
              * @return  Result<span<const std::byte> > A span representing the serialized frame data. The length of the span is fixed to FRAME_SIZE for fixed-size frames, or the current size for variable-size frames.
              */
-            Result<span<const std::byte> > serialize(span<std::byte> buffer) const {
+            Result<span<const std::byte> > serialize() const {
                 // Update checksum before serialization
                 auto checksum_res = this->derived().update_checksum();
                 if (!checksum_res) {
                     return Result<void>::error(checksum_res.error(), "ConfigInterface::serialize");
                 }
                 // Call the base class serialize method
-                return CoreInterface<Frame>::serialize(buffer);
+                return CoreInterface<Frame>::serialize();
             }
 
             // === Configuration Methods ===
