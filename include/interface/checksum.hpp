@@ -16,17 +16,26 @@ namespace USBCANBridge {
         static_assert(has_checksum_v<Frame>,
             "Frame must be a frame type with checksum");
 
-        // * Type aliases
-        using layout = layout_t<Frame>;
-
         private:
-
+            // * Reference to the associated frame
             Frame& frame_;
-            mutable bool dirty_ = true;
+
+            Frame& get_frame() {
+                return frame_;
+            }
 
             const Frame& get_frame() const {
                 return frame_;
             }
+
+            // * Dirty flag to track if checksum needs recomputation
+            mutable bool dirty_ = true;
+
+            // * CRTP helper to derive checksum-related offsets and sizes
+            const layout_t<Frame>& layout_;
+            constexpr static std::size_t CHECKSUM = layout_t<Frame>::CHECKSUM;
+            constexpr static std::size_t CHECKSUM_START = layout_t<Frame>::TYPE;
+            constexpr static std::size_t CHECKSUM_END = layout_t<Frame>::CHECKSUM;  // ? just to use different naming for clarity
 
             /**
              * @brief Mark the stored checksum as clean (i.e., up-to-date).
@@ -39,78 +48,55 @@ namespace USBCANBridge {
             /**
              * @brief Core logic to compute checksum from raw data.
              * @param data The raw data to compute checksum from
-             * @param start_index Starting index for checksum calculation
-             * @param end_index Ending index for checksum calculation
              * @return The computed checksum value
+             * @throws std::runtime_error if data size is insufficient
              */
-            static Result<std::byte> compute_checksum_impl(
-                span<const std::byte> data,
-                size_t start_index,
-                size_t end_index) {
+            static std::byte compute_checksum_impl(const storage_t<Frame> data) {
 
-                if (data.size() < end_index) {
-                    return Result<std::byte>::error(Status::WBAD_LENGTH);
+                if (data.size() <= CHECKSUM_END) {
+                    throw std::runtime_error("Checksum calculation: invalid data length");
                 }
 
-                uint16_t sum = std::accumulate(data.begin() + start_index, data.begin() + end_index,
+                uint16_t sum = std::accumulate(data.begin() + CHECKSUM_START,
+                    data.begin() + CHECKSUM_END,
                     uint16_t(0),
                     [](uint16_t acc, std::byte b) {
                         return acc + static_cast<uint8_t>(b);
                     });
-                return Result<std::byte>::success(static_cast<std::byte>(sum & 0xFF));
+                return static_cast<std::byte>(sum & 0xFF);
             }
+
             /**
              * @brief Core logic to verify checksum from raw data.
              * @param data The raw data to verify checksum for
-             * @param checksum_index Index where the stored checksum is located
-             * @param start_index Starting index for checksum calculation
-             * @param end_index Ending index for checksum calculation
              * @return True if checksums match, false otherwise
+             * @throws std::runtime_error if data size is insufficient
              */
-            static Result<bool> verify_checksum_impl(
-                span<const std::byte> data,
-                size_t checksum_index,
-                size_t start_index,
-                size_t end_index) {
+            static bool verify_checksum_impl(const storage_t<Frame> data) {
 
-                if (data.size() <= checksum_index) {
-                    return Result<bool>::error(Status::WBAD_LENGTH);
+                if (data.size() <= CHECKSUM) {
+                    throw std::runtime_error("Checksum verification: invalid data length");
                 }
 
-                std::byte stored_checksum = data[checksum_index];
-                auto computed_checksum_res = compute_checksum_impl(data, start_index, end_index);
-                if (!computed_checksum_res) {
-                    return Result<bool>::error(computed_checksum_res.error());
-                }
+                std::byte stored_checksum = data[CHECKSUM];
+                std::byte computed_checksum = compute_checksum_impl(data);
 
-                return Result<bool>::success(stored_checksum == computed_checksum_res.value());
+                return stored_checksum == computed_checksum;
             }
 
             /**
              * @brief Core logic to update checksum in raw data.
              * @param data The raw data to update checksum for
-             * @param checksum_index Index where the checksum should be stored
-             * @param start_index Starting index for checksum calculation
-             * @param end_index Ending index for checksum calculation
-             * @return Success status or error
+             * @throws std::runtime_error if data size is insufficient
              */
-            static Result<void> update_checksum_impl(
-                span<std::byte> data,
-                size_t checksum_index,
-                size_t start_index,
-                size_t end_index) {
+            static void update_checksum_impl(storage_t<Frame>& data) {
 
-                if (data.size() <= checksum_index) {
-                    return Result<void>::error(Status::WBAD_LENGTH);
+                if (data.size() <= CHECKSUM) {
+                    throw std::runtime_error("Checksum update: invalid data length");
                 }
 
-                auto computed_checksum_res = compute_checksum_impl(data, start_index, end_index);
-                if (!computed_checksum_res) {
-                    return Result<void>::error(computed_checksum_res.error());
-                }
-
-                data[checksum_index] = computed_checksum_res.value();
-                return Result<void>::success();
+                std::byte computed_checksum = compute_checksum_impl(data);
+                data[CHECKSUM] = computed_checksum;
             }
 
         public:
@@ -118,9 +104,12 @@ namespace USBCANBridge {
              * @brief Construct a ChecksumInterface for the given frame.
              * @param frame The frame to associate with this ChecksumInterface.
              */
-            ChecksumInterface(Frame& frame) : frame_(frame) {
+            ChecksumInterface(Frame& frame) : frame_(frame), layout_(frame.get_layout()) {
                 mark_dirty();
             }
+
+            ~ChecksumInterface() = default;
+
             // === Utility Methods to Set/Unset Dirty bit ===
             /**
              * @brief Check if the stored checksum is dirty (i.e., needs to be recomputed).
@@ -144,22 +133,15 @@ namespace USBCANBridge {
              * The algorithm performs a sum of the interested bytes and takes the lowest 8 bits.
              * @note The checksum is computed over the fields 2 to 18 (inclusive) of Derived (which can be FixedFrame or ConfigFrame).
              * The corresponding fields are:
-             * [Type][FrameType][FrameFormat][ID1]...[ID4][DLC][Data0]...[Data7][Reserved]
+             * [Type][CANVersion][Format][ID1]...[ID4][DLC][Data0]...[Data7][Reserved]
              * @return The computed checksum value.
              */
             template<typename T = Frame>
-            std::enable_if_t<has_checksum_v<T>, Result<std::byte> >
+            std::enable_if_t<has_checksum_v<T>, std::byte>
             compute_checksum() const {
-                auto raw_data = this->get_frame().serialize();
-                if (!raw_data) {
-                    return Result<std::byte>::error(raw_data.error());
-                }
+                const storage_t<Frame>& raw_data = this->get_frame().get_storage();
 
-                return compute_checksum_impl(
-                    raw_data.value(),
-                    layout::TYPE_OFFSET,
-                    layout::CHECKSUM_OFFSET
-                );
+                return compute_checksum_impl(raw_data);
             }
 
             /**
@@ -168,49 +150,24 @@ namespace USBCANBridge {
              * @return The computed checksum value
              */
             template<typename T = Frame>
-            static std::enable_if_t<has_checksum_v<T>, Result<std::byte> >
-            compute_checksum(span<const std::byte> data) {
+            static std::enable_if_t<has_checksum_v<T>, std::byte>
+            compute_checksum(const storage_t<Frame> data) {
                 // Use Frame's traits for offset information
-                return compute_checksum_impl(
-                    data,
-                    Frame::layout::TYPE_OFFSET,
-                    Frame::layout::CHECKSUM_OFFSET
-                );
+                return compute_checksum_impl(data);
             }
 
-            /**
-             * @brief Compute the checksum for external data with explicit offsets.
-             * @param data The raw data to compute checksum from
-             * @param start_offset Starting offset for checksum calculation
-             * @param end_offset Ending offset for checksum calculation
-             * @return The computed checksum value
-             */
-            static Result<std::byte> compute_checksum(
-                span<const std::byte> data,
-                size_t start_offset,
-                size_t end_offset) {
-                return compute_checksum_impl(data, start_offset, end_offset);
-            }
             /**
              * @brief Check if the stored checksum matches the computed checksum.
              * This method verifies the integrity of the frame by comparing the stored checksum
              * with a freshly computed checksum based on the current frame data.
-             * @return Result<bool> True if the checksums match, false otherwise. Returns an error status on failure.
+             * @return True if the checksums match, false otherwise.
              */
             template<typename T = Frame>
-            std::enable_if_t<has_checksum_v<T>, Result<bool> >
+            std::enable_if_t<has_checksum_v<T>, bool>
             verify_checksum() const {
-                auto raw_data = this->get_frame().serialize();
-                if (!raw_data) {
-                    return Result<bool>::error(raw_data.error());
-                }
+                const storage_t<Frame>& raw_data = this->get_frame().get_storage();
 
-                return verify_checksum_impl(
-                    raw_data.value(),
-                    layout::CHECKSUM_OFFSET,
-                    layout::TYPE_OFFSET,
-                    layout::CHECKSUM_OFFSET
-                );
+                return verify_checksum_impl(raw_data);
             }
 
             /**
@@ -219,96 +176,41 @@ namespace USBCANBridge {
              * @return True if checksums match, false otherwise
              */
             template<typename T = Frame>
-            static std::enable_if_t<has_checksum_v<T>, Result<bool> >
-            verify_checksum(span<const std::byte> data) {
-                return verify_checksum_impl(
-                    data,
-                    Frame::layout::CHECKSUM_OFFSET,
-                    Frame::layout::TYPE_OFFSET,
-                    Frame::layout::CHECKSUM_OFFSET
-                );
+            static std::enable_if_t<has_checksum_v<T>, bool>
+            verify_checksum(const storage_t<Frame>& data) {
+                return verify_checksum_impl(data);
             }
 
-            /**
-             * @brief Verify checksum for external data with explicit offsets.
-             * @param data The raw data to verify checksum for
-             * @param checksum_offset Offset where the stored checksum is located
-             * @param start_offset Starting offset for checksum calculation
-             * @param end_offset Ending offset for checksum calculation
-             * @return True if checksums match, false otherwise
-             */
-            static Result<bool> verify_checksum(
-                span<const std::byte> data,
-                size_t checksum_offset,
-                size_t start_offset,
-                size_t end_offset) {
-                return verify_checksum_impl(data, checksum_offset, start_offset, end_offset);
-            }
             /**
              * @brief Update the stored checksum to match the computed checksum.
              * This method recalculates the checksum based on the current frame data
              * and updates the stored checksum field accordingly.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
+             * If the checksum is not marked as dirty, this method does nothing.
+             * @note After updating, the checksum is marked as clean.
              */
             template<typename T = Frame>
-            std::enable_if_t<has_checksum_v<T>, Result<void> >
-            update_checksum() const {
+            std::enable_if_t<has_checksum_v<T>, void>
+            update_checksum() {
                 if (!this->is_dirty()) {
-                    return Result<void>::success(); // No need to update if not dirty
+                    return; // No need to update if not dirty
                 }
 
-                auto raw_data = this->get_frame().get_mutable_storage();
-                if (!raw_data) {
-                    return Result<void>::error(raw_data.error());
-                }
-                auto* data_ptr = raw_data.value();
+                storage_t<Frame>& raw_data = this->get_frame().get_storage();
 
-                auto result = update_checksum_impl(
-                    *data_ptr,
-                    layout::CHECKSUM_OFFSET,
-                    layout::TYPE_OFFSET,
-                    layout::CHECKSUM_OFFSET
-                );
+                update_checksum_impl(raw_data);
 
-                if (result) {
-                    this->mark_clean();
-                }
-
-                return result;
+                this->mark_clean();
             }
 
             /**
              * @brief Update checksum for external data with frame type inference.
              * @param data The raw data to update checksum for
-             * @return Success status or error
              */
             template<typename T = Frame>
-            static std::enable_if_t<has_checksum_v<T>, Result<void> >
-            update_checksum(span<std::byte> data) {
-                return update_checksum_impl(
-                    data,
-                    Frame::layout::CHECKSUM_OFFSET,
-                    Frame::layout::TYPE_OFFSET,
-                    Frame::layout::CHECKSUM_OFFSET
-                );
+            static std::enable_if_t<has_checksum_v<T>, void>
+            update_checksum(storage_t<Frame>& data) {
+                update_checksum_impl(data);
             }
-
-            /**
-             * @brief Update checksum for external data with explicit offsets.
-             * @param data The raw data to update checksum for
-             * @param checksum_offset Offset where the checksum should be stored
-             * @param start_offset Starting offset for checksum calculation
-             * @param end_offset Ending offset for checksum calculation
-             * @return Success status or error
-             */
-            static Result<void> update_checksum(
-                span<std::byte> data,
-                size_t checksum_offset,
-                size_t start_offset,
-                size_t end_offset) {
-                return update_checksum_impl(data, checksum_offset, start_offset, end_offset);
-            }
-
     };
 
 }

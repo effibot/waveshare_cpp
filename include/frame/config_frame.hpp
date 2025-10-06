@@ -34,11 +34,7 @@ namespace USBCANBridge {
      */
     class ConfigFrame :
         public ConfigInterface<ConfigFrame> {
-        public:
-            // * Alias for traits
-            using traits = frame_traits_t<ConfigFrame>;
-            using layout = layout_t<ConfigFrame>;
-            using storage = storage_t<ConfigFrame>;
+
         private:
             // * Composition with ChecksumInterface
             ChecksumInterface<ConfigFrame> checksum_interface_;
@@ -46,8 +42,6 @@ namespace USBCANBridge {
         public:
             // * Constructors
             ConfigFrame() : ConfigInterface<ConfigFrame>(), checksum_interface_(*this) {
-                // Initialize constant fields
-                this->impl_init_fields();
 
             }
 
@@ -73,32 +67,23 @@ namespace USBCANBridge {
              * - `MASK` (4 bytes): Acceptance mask, big-endian
              * - `RESERVED` (4 bytes): Reserved bytes, always `0x00`
              */
-            Result<void> impl_init_fields() {
+            void impl_init_fields() {
                 // * Set the Header byte
-                frame_storage_[layout::HEADER_OFFSET] = to_byte(Constants::HEADER);
+                frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
                 // * Set the Type byte
-                frame_storage_[layout::TYPE_OFFSET] = to_byte(DEFAULT_CONF_TYPE);
+                frame_storage_[layout_.TYPE] = to_byte(DEFAULT_CONF_TYPE);
                 // * Initialize other fields to zero
-                frame_storage_[layout::BAUD_OFFSET] = to_byte(CANBaud::BAUD_1M);
-                frame_storage_[layout::MODE_OFFSET] = to_byte(CANMode::NORMAL);
+                frame_storage_[layout_.BAUD] = to_byte(CANBaud::BAUD_1M);
+                frame_storage_[layout_.MODE] = to_byte(CANMode::NORMAL);
                 for (size_t i = 0; i < 4; ++i) {
-                    frame_storage_[layout::FILTER_OFFSET + i] = to_byte(Constants::RESERVED);
-                    frame_storage_[layout::MASK_OFFSET + i] = to_byte(Constants::RESERVED);
-                    frame_storage_[layout::RESERVED_OFFSET + i] = to_byte(Constants::RESERVED);
+                    frame_storage_[layout_.FILTER + i] = to_byte(Constants::RESERVED);
+                    frame_storage_[layout_.MASK + i] = to_byte(Constants::RESERVED);
+                    frame_storage_[layout_.RESERVED + i] = to_byte(Constants::RESERVED);
                 }
                 // Mark checksum as dirty since we changed the frame
                 checksum_interface_.mark_dirty();
-                return Result<void>::success();
             }
 
-            /**
-             * @brief Deserialize the frame from a byte array.
-             * This method copies the data into internal storage and performs complete validation before returning.
-             * @param data A span representing the serialized frame data.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             * @note This method copies the data into internal storage and marks the checksum as dirty.
-             */
-            Result<void> impl_deserialize(span<const std::byte> data);
             /**
              * @brief Validate the frame contents.
              * This method checks the integrity and correctness of the frame fields.
@@ -133,91 +118,16 @@ namespace USBCANBridge {
             /**
              * @brief Get the size of the frame in bytes.
              *
-             * @return Result<std::size_t> The size of the frame in bytes.
+             * @return std::size_t The size of the frame in bytes.
              */
-            Result<std::size_t> impl_size() const {
-                return Result<std::size_t>::success(traits::FRAME_SIZE);
+            std::size_t impl_size() const {
+                return traits_.FRAME_SIZE;
             }
 
             // === ConfigFrame impl_*() Methods ===
-            /**
-             * @brief Get the FrameType from the internal storage.
-             *
-             * @return Result<FrameType> The FrameType, or an error status on failure.
-             */
-            Result<FrameType> impl_get_frame_type() const;
-            /**
-             * @brief Set the FrameType in the internal storage.
-             * @param type The FrameType to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             */
-            Result<void> impl_set_frame_type(FrameType type);
-            /**
-             * @brief Get the CAN baud rate from the internal storage.
-             * @return Result<CANBaud> The CAN baud rate, or an error status on failure.
-             */
-            Result<CANBaud> impl_get_baud_rate() const;
-            /**
-             * @brief Set the CAN baud rate in the internal storage.
-             * @warning Changing the baud rate marks the frame as dirty, requiring checksum recomputation.
-             * @param rate The CAN baud rate to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             */
-            Result<void> impl_set_baud_rate(CANBaud rate);
-
-            /**
-             * @brief Get the CAN mode from the internal storage.
-             * @return Result<CANMode> The CAN mode, or an error status on failure.
-             */
-            Result<CANMode> impl_get_can_mode() const;
-            /**
-             * @brief Set the CAN mode in the internal storage.
-             * @warning Changing the mode marks the frame as dirty, requiring checksum recomputation.
-             * @param mode The CAN mode to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             */
-            Result<void> impl_set_can_mode(CANMode mode);
-            /**
-             * @brief Get the acceptance filter from the internal storage.
-             * @return Result<uint32_t> The acceptance filter, or an error status on failure.
-             */
-            Result<uint32_t> impl_get_filter() const;
-            /**
-             * @brief Set the acceptance filter in the internal storage.
-             * @warning Changing the filter marks the frame as dirty, requiring checksum recomputation.
-             * @param filter The acceptance filter to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             * @note The filter must be compatible with the current frame type.
-             */
-            Result<void> impl_set_filter(uint32_t filter);
-            /**
-             * @brief Get the acceptance mask from the internal storage.
-             * @return Result<uint32_t> The acceptance mask, or an error status on failure.
-             */
-            Result<uint32_t> impl_get_mask() const;
-            /**
-             * @brief Set the acceptance mask in the internal storage.
-             * @warning Changing the mask marks the frame as dirty, requiring checksum recomputation.
-             * @param mask The acceptance mask to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure
-             * @note The mask must be compatible with the current filter and frame type.
-             */
-            Result<void> impl_set_mask(uint32_t mask);
-            /**
-             * @brief Set the auto retransmission flag in the internal storage.
-             * @param enable True to enable auto retransmission, false to disable it.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             */
-            Result<void> impl_set_auto_rtx(RTX auto_rtx);
-            /**
-             * @brief Get the auto retransmission flag from the internal storage.
-             * @return Result<RTX> The current auto retransmission setting, or an error status on failure.
-             */
-            Result<RTX> impl_get_auto_rtx() const;
-
-            // * Composition with ChecksumInterface
-            Result<void> update_checksum() const {
-                return checksum_interface_.update_checksum();
-            }
+            Type impl_get_type() const;
+            void impl_set_type(Type type);
+            CANVersion impl_get_CAN_version() const;
+            void impl_set_CAN_version(CANVersion type);
     };
 }

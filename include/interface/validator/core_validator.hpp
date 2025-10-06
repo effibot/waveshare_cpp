@@ -50,13 +50,13 @@ namespace USBCANBridge {
                            Result<bool>::error(Status::WBAD_TYPE);
                 }
                 if constexpr (is_variable_frame_v<T>) {
-                    Type type_base = extract_type_base(type);                   
-                    FrameFormat frame_fmt = extract_frame_format(type);
+                    Type type_base = extract_type_base(type);
+                    Format frame_fmt = extract_frame_format(type);
                     std::size_t dlc = extract_dlc(type);
                     bool valid = (type_base == Type::DATA_VARIABLE) &&
                         validate_frame_type_impl(type).value() &&
-                        (frame_fmt == FrameFormat::REMOTE_VARIABLE ||
-                        frame_fmt == FrameFormat::DATA_VARIABLE) &&
+                        (frame_fmt == Format::REMOTE_VARIABLE ||
+                        frame_fmt == Format::DATA_VARIABLE) &&
                         (dlc <= T::layout::MAX_DATA_SIZE);
                     return valid ? Result<bool>::success(true) :
                            Result<bool>::error(Status::WBAD_TYPE);
@@ -72,26 +72,26 @@ namespace USBCANBridge {
 
             /**
              * @brief Internal helper to perform frame type validation logic.
-             * @param frame_type The FrameType to validate.
+             * @param frame_type The CANVersion to validate.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
              */
             template<typename T = Frame>
             static Result<bool> validate_frame_type_impl(std::byte frame_type) {
                 if constexpr (is_fixed_frame_v<T>) {
-                    FrameType ft = extract_frame_type(frame_type);
-                    return (ft == FrameType::STD_FIXED || ft == FrameType::EXT_FIXED) ?
+                    CANVersion ft = extract_frame_type(frame_type);
+                    return (ft == CANVersion::STD_FIXED || ft == CANVersion::EXT_FIXED) ?
                            Result<bool>::success(true) :
                            Result<bool>::error(Status::WBAD_FRAME_TYPE);
                 }
                 if constexpr (is_variable_frame_v<T>) {
-                    FrameType ft = extract_frame_type(frame_type);
-                    return (ft == FrameType::STD_VARIABLE || ft == FrameType::EXT_VARIABLE) ?
+                    CANVersion ft = extract_frame_type(frame_type);
+                    return (ft == CANVersion::STD_VARIABLE || ft == CANVersion::EXT_VARIABLE) ?
                            Result<bool>::success(true) :
                            Result<bool>::error(Status::WBAD_FRAME_TYPE);
                 }
                 if constexpr (is_config_frame_v<T>) {
-                    FrameType ft = extract_frame_type(frame_type);
-                    return (ft == FrameType::STD_FIXED || ft == FrameType::EXT_FIXED) ?
+                    CANVersion ft = extract_frame_type(frame_type);
+                    return (ft == CANVersion::STD_FIXED || ft == CANVersion::EXT_FIXED) ?
                            Result<bool>::success(true) :
                            Result<bool>::error(Status::WBAD_FRAME_TYPE);
                 }
@@ -176,8 +176,8 @@ namespace USBCANBridge {
             }
 
             /**
-             * @brief Validate the given FrameType object before setting it.
-             * @param frame_type The FrameType to validate.
+             * @brief Validate the given CANVersion object before setting it.
+             * @param frame_type The CANVersion to validate.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
              * @note This method uses compile-time checks to validate the frame type based on frame type.
              */

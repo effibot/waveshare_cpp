@@ -13,8 +13,8 @@ namespace USBCANBridge {
         std::fill(storage_.begin(), storage_.end(), std::byte{0});
 
         // Set up basic frame structure
-        storage_[Layout::START_OFFSET] = to_byte(Constants::START_BYTE);
-        storage_[Layout::TYPE_OFFSET] = std::byte{0}; // Will be set based on ID and data
+        storage_[Layout::START] = to_byte(Constants::START_BYTE);
+        storage_[Layout::TYPE] = std::byte{0}; // Will be set based on ID and data
 
         // Initialize with standard ID and no data
         is_extended_id_ = false;
@@ -35,7 +35,7 @@ namespace USBCANBridge {
             (is_extended_id_ ? 1 : 0) |  // Bit 0: Extended ID flag
             (static_cast<uint8_t>(data_length_) << 1)  // Bits 1-4: DLC
         );
-        storage_[Layout::TYPE_OFFSET] = type_byte;
+        storage_[Layout::TYPE] = type_byte;
     }
 
     // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
@@ -57,7 +57,7 @@ namespace USBCANBridge {
         storage_.assign(data.begin(), data.end());
 
         // Validate basic structure
-        if (storage_[Layout::START_OFFSET] != to_byte(Constants::START_BYTE)) {
+        if (storage_[Layout::START] != to_byte(Constants::START_BYTE)) {
             return Result<void>::error(Status::WBAD_START, "deserialize");
         }
 
@@ -66,7 +66,7 @@ namespace USBCANBridge {
         }
 
         // Parse type byte to update cached values
-        std::byte type_byte = storage_[Layout::TYPE_OFFSET];
+        std::byte type_byte = storage_[Layout::TYPE];
         is_extended_id_ = (static_cast<uint8_t>(type_byte) & 0x01) != 0;
         data_length_ = (static_cast<uint8_t>(type_byte) >> 1) & 0x0F;
 
@@ -78,7 +78,7 @@ namespace USBCANBridge {
             return Result<bool>::success(false, "validate");
         }
 
-        if (storage_[Layout::START_OFFSET] != to_byte(Constants::START_BYTE)) {
+        if (storage_[Layout::START] != to_byte(Constants::START_BYTE)) {
             return Result<bool>::success(false, "validate");
         }
 
@@ -114,35 +114,35 @@ namespace USBCANBridge {
         is_extended_id_ = new_extended;
         update_frame_structure();
 
-        std::size_t id_offset = Layout::ID_OFFSET;
+        std::size_t id = Layout::ID;
 
         if (is_extended_id_) {
             // Store 4-byte extended ID in big endian
-            storage_[id_offset] = static_cast<std::byte>((id >> 24) & 0xFF);
-            storage_[id_offset + 1] = static_cast<std::byte>((id >> 16) & 0xFF);
-            storage_[id_offset + 2] = static_cast<std::byte>((id >> 8) & 0xFF);
-            storage_[id_offset + 3] = static_cast<std::byte>(id & 0xFF);
+            storage_[id] = static_cast<std::byte>((id >> 24) & 0xFF);
+            storage_[id + 1] = static_cast<std::byte>((id >> 16) & 0xFF);
+            storage_[id + 2] = static_cast<std::byte>((id >> 8) & 0xFF);
+            storage_[id + 3] = static_cast<std::byte>(id & 0xFF);
         } else {
             // Store 2-byte standard ID in big endian
-            storage_[id_offset] = static_cast<std::byte>((id >> 8) & 0xFF);
-            storage_[id_offset + 1] = static_cast<std::byte>(id & 0xFF);
+            storage_[id] = static_cast<std::byte>((id >> 8) & 0xFF);
+            storage_[id + 1] = static_cast<std::byte>(id & 0xFF);
         }
 
         return Result<void>::success("set_can_id");
     }
 
     Result<uint32_t> VariableFrame::impl_get_can_id() const {
-        std::size_t id_offset = Layout::ID_OFFSET;
+        std::size_t id = Layout::ID;
         uint32_t id = 0;
 
         if (is_extended_id_) {
-            id = (static_cast<uint32_t>(storage_[id_offset]) << 24) |
-                (static_cast<uint32_t>(storage_[id_offset + 1]) << 16) |
-                (static_cast<uint32_t>(storage_[id_offset + 2]) << 8) |
-                static_cast<uint32_t>(storage_[id_offset + 3]);
+            id = (static_cast<uint32_t>(storage_[id]) << 24) |
+                (static_cast<uint32_t>(storage_[id + 1]) << 16) |
+                (static_cast<uint32_t>(storage_[id + 2]) << 8) |
+                static_cast<uint32_t>(storage_[id + 3]);
         } else {
-            id = (static_cast<uint32_t>(storage_[id_offset]) << 8) |
-                static_cast<uint32_t>(storage_[id_offset + 1]);
+            id = (static_cast<uint32_t>(storage_[id]) << 8) |
+                static_cast<uint32_t>(storage_[id + 1]);
         }
 
         return Result<uint32_t>::success(id, "get_can_id");
@@ -156,15 +156,15 @@ namespace USBCANBridge {
         data_length_ = data.size();
         update_frame_structure();
 
-        std::size_t data_offset = Layout::data_offset(is_extended_id_);
-        std::copy(data.begin(), data.end(), storage_.begin() + data_offset);
+        std::size_t data = Layout::data(is_extended_id_);
+        std::copy(data.begin(), data.end(), storage_.begin() + data);
 
         return Result<void>::success("set_data");
     }
 
     span<const std::byte> VariableFrame::impl_get_data() const {
-        std::size_t data_offset = Layout::data_offset(is_extended_id_);
-        return span<const std::byte>(storage_.data() + data_offset, data_length_);
+        std::size_t data = Layout::data(is_extended_id_);
+        return span<const std::byte>(storage_.data() + data, data_length_);
     }
 
     Result<void> VariableFrame::impl_set_dlc(std::byte dlc) {
@@ -194,11 +194,11 @@ namespace USBCANBridge {
     }
 
     std::byte VariableFrame::get_type_byte() const {
-        return storage_[Layout::TYPE_OFFSET];
+        return storage_[Layout::TYPE];
     }
 
     Result<void> VariableFrame::set_type_byte(std::byte type_byte) {
-        storage_[Layout::TYPE_OFFSET] = type_byte;
+        storage_[Layout::TYPE] = type_byte;
 
         // Update cached values from type byte
         is_extended_id_ = (static_cast<uint8_t>(type_byte) & 0x01) != 0;

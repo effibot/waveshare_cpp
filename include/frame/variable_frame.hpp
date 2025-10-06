@@ -52,9 +52,9 @@ namespace USBCANBridge {
              */
             void impl_init_fields() {
                 // * Set the Type byte to default variable frame type
-                frame_storage_[layout::TYPE_OFFSET] = to_byte(Type::DATA_VARIABLE);
+                frame_storage_[layout::TYPE] = to_byte(Type::DATA_VARIABLE);
                 // * Initialize ID to 0
-                frame_storage_[layout::ID_OFFSET] = to_byte(Constants::RESERVED);
+                frame_storage_[layout::ID] = to_byte(Constants::RESERVED);
                 // * Compute the initial size with 0 data length
                 std::size_t initial_size = layout::frame_size(false, 0);
                 // * Set the END byte at the correct position
@@ -66,99 +66,93 @@ namespace USBCANBridge {
              * This includes all fields: START, TYPE, ID, DATA, END.
              * The size is dynamic based on the current DLC (data length code).
              *
-             * @return Result<std::size_t> The current size of the frame in bytes.
+             * @return std::size_t The current size of the frame in bytes.
              */
-            Result<std::size_t> impl_size() const;
+            std::size_t impl_size() const;
 
             /**
              * @brief Validate the frame.
              * This checks that all fields are valid according to the protocol.
              *
-             * @return Result<void> Status::SUCCESS if valid, or an error status if invalid.
+             * @return bool True if valid, false if invalid.
              */
-            Result<void> impl_validate() const;
+            bool impl_validate() const;
 
 
             /**
              * @brief Get the Type byte from the frame storage.
              *
-             * @return Result<std::byte> The Type byte.
+             * @return std::byte The Type byte.
              */
-            Result<std::byte> impl_get_type() const;
+            std::byte impl_get_type() const;
 
             /**
              * @brief Set the Type byte in the frame storage.
              *
              * @param type The Type byte to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            Result<void> impl_set_type(std::byte type);
+            void impl_set_type(std::byte type);
 
             /**
              * @brief Deserialize the frame from a byte array.
              * This method copies the data into internal storage and performs complete validation before returning.
              * @param data A span representing the serialized frame data.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              * @note This method copies the data into internal storage and marks the checksum as dirty.
              */
-            Result<void> impl_deserialize(span<const std::byte> data);
+            void impl_deserialize(span<const std::byte> data);
 
         // === DataFrame impl_*() Methods ===
         public:
             /**
              * @brief Get the frame format from the internal storage.
-             * @return Result<FrameFormat>
+             * @return Format The frame format
              */
-            Result<FrameFormat> impl_get_format() const;
+            Format impl_get_format() const;
 
             /**
              * @brief Set the Frame Format object.
-             * @param format The FrameFormat to set. Must be one of the valid enum values.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
+             * @param format The Format to set. Must be one of the valid enum values.
              */
-            Result<void> impl_set_format(FrameFormat format);
+            void impl_set_format(Format format);
             /**
              * @brief Get the frame ID from the internal storage.
-             * @return Result<uint32_t>
+             * @return uint32_t The CAN ID
              */
-            Result<uint32_t> impl_get_id() const;
+            uint32_t impl_get_id() const;
             /**
              * @brief Set the frame ID in the internal storage.
              * @warning Changing the ID marks the frame as dirty, requiring checksum recomputation.
              * @param id The frame ID to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            Result<void> impl_set_id(uint32_t id);
+            void impl_set_id(uint32_t id);
             /**
              * @brief Get the data length code (DLC) from the internal storage.
-             * @return Result<std::size_t>
+             * @return std::size_t The DLC value
              */
-            Result<std::size_t> impl_get_dlc() const;
+            std::size_t impl_get_dlc() const;
             /**
              * @brief Get a read-only view of the data payload.
-             * @return Result<span<const std::byte>>
+             * @return span<const std::byte> View of the data
              */
-            Result<span<const std::byte> > impl_get_data() const;
+            span<const std::byte> impl_get_data() const;
             /**
              * @brief Set the data payload in the internal storage.
              * @warning Changing the data marks the frame as dirty, requiring checksum recomputation.
              * @param data A span representing the data payload to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            Result<void> impl_set_data(span<const std::byte> data);
+            void impl_set_data(span<const std::byte> data);
             /**
              * @brief Check if the frame is using an extended CAN ID.
-             * @return Result<bool>
+             * @return bool True if extended, false if standard
              */
-            Result<bool> impl_is_extended() const;
+            bool impl_is_extended() const;
 
         private:
             /**
              * @brief Set the DLC field in the Type byte.
              * @param dlc The data length code (DLC) to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
              */
-            Result<void> impl_set_dlc(std::size_t dlc);
+            void impl_set_dlc(std::size_t dlc);
 
     };
 }

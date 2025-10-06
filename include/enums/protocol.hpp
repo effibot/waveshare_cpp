@@ -86,15 +86,15 @@ namespace USBCANBridge {
      * - EXT_VARIABLE: Extended ID (29-bit) with variable frame structure
      * <<< Recommended: STD_VARIABLE >>>
      */
-    enum class FrameType : std::uint8_t {
+    enum class CANVersion : std::uint8_t {
         STD_FIXED = 0x01,
         STD_VARIABLE = 0,
         EXT_FIXED = 0x02,
         EXT_VARIABLE = 1
     };
-    
+
     // * Define default Frame Type
-    static constexpr FrameType DEFAULT_FRAME_TYPE = FrameType::STD_VARIABLE;
+    static constexpr CANVersion DEFAULT_CAN_VERSION = CANVersion::STD_VARIABLE;
 
     /**
      * @brief Frame Format constants.
@@ -107,16 +107,15 @@ namespace USBCANBridge {
      * - DATA_VARIABLE: Data frame with variable structure
      *
      * - REMOTE_VARIABLE: Remote transmission request with variable structure
-     * <<< Recommended: DATA_VARIABLE >>>
      */
-    enum class FrameFormat : std::uint8_t {
+    enum class Format : std::uint8_t {
         DATA_FIXED = 0x01,
         REMOTE_FIXED = 0x02,
-        DATA_VARIABLE = 0x00,
+        DATA_VARIABLE = 0x00,   // <<< Recommended
         REMOTE_VARIABLE = 0x01
     };
     // * Define default Frame Format
-    static constexpr FrameFormat DEFAULT_FRAME_FMT = FrameFormat::DATA_VARIABLE;
+    static constexpr Format DEFAULT_FORMAT = Format::DATA_VARIABLE;
 
 
 
@@ -140,10 +139,9 @@ namespace USBCANBridge {
      * - 125 kbps: up to 500m
      *
      * - Lower speeds: up to 1000m+
-     * <<< Recommended: 1 Mbps >>>
      */
     enum class CANBaud : std::uint8_t {
-        BAUD_1M = 0x01,
+        BAUD_1M = 0x01, // <<< Recommended
         BAUD_800K = 0x02,
         BAUD_500K = 0x03,
         BAUD_400K = 0x04,
@@ -173,10 +171,9 @@ namespace USBCANBridge {
      *
      * - LOOPBACK_SILENT: Combination of loopback and silent modes for testing
      *   without bus impact.
-     * <<< Recommended: NORMAL >>>
      */
     enum class CANMode : std::uint8_t {
-        NORMAL = 0x00,
+        NORMAL = 0x00,  // <<< Recommended
         LOOPBACK = 0x01,
         SILENT = 0x02,
         LOOPBACK_SILENT = 0x03
@@ -193,9 +190,11 @@ namespace USBCANBridge {
      * @note Available retransmission modes are:
      * - AUTO: Standard CAN behavior with automatic retransmission enabled.
      * - OFF: Single-shot mode with automatic retransmission disabled.
-     * <<< Recommended: AUTO >>>
      */
-    enum class RTX : std::uint8_t { AUTO = 0x00, OFF = 0x01 };
+    enum class RTX : std::uint8_t {
+        AUTO = 0x00, // <<< Recommended
+        OFF = 0x01
+    };
     // * Define default RTX mode
     static constexpr RTX DEFAULT_RTX = RTX::AUTO;
 
@@ -213,8 +212,6 @@ namespace USBCANBridge {
      * - 115200 bps: Common high-speed rate, good for most applications
      * - 1.2288 Mbps and 2 Mbps: Very high speeds, may require quality cables and
      *   short distances
-     *
-     * <<< Recommended: 2 Mbps >>>
      */
     enum class SerialBaud : std::uint32_t {
         BAUD_9600 = 9600,
@@ -223,7 +220,7 @@ namespace USBCANBridge {
         BAUD_57600 = 57600,
         BAUD_115200 = 115200,
         BAUD_1228800 = 1228800,
-        BAUD_2M = 2000000
+        BAUD_2M = 2000000   // <<< Recommended
     };
     // * Define default Serial baud rate
     static constexpr SerialBaud DEFAULT_SERIAL_BAUD = SerialBaud::BAUD_2M;
@@ -378,7 +375,7 @@ namespace USBCANBridge {
      * @endcode
      */
     template<typename T>
-    constexpr T bytes_to_int_le(const std::array<std::byte, sizeof(T)>& bytes) {
+    constexpr T bytes_to_int_le(const span<const std::byte>& bytes) {
         static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
         T value = 0;
         for (std::size_t i = 0; i < sizeof(T); ++i) {
@@ -401,29 +398,29 @@ namespace USBCANBridge {
             static_cast<std::uint8_t>(type) & 0xC0);
     }
     /**
-     * @brief Extract the FrameType from a Type byte.
-     * The FrameType is a single bit that indicates whether the frame is
+     * @brief Extract the CANVersion from a Type byte.
+     * The CANVersion is a single bit that indicates whether the frame is
      * standard (STD) or extended (EXT).
      * @note The extraction is performed by right-shifting to select the fifth bit
      * and masking out all other bits.
      * @param type The Type byte to extract from.
-     * @return The extracted FrameType.
+     * @return The extracted CANVersion.
      */
-    constexpr FrameType extract_frame_type(std::byte type) {
-        return static_cast<FrameType>(
+    constexpr CANVersion extract_frame_type(std::byte type) {
+        return static_cast<CANVersion>(
             (static_cast<std::uint8_t>(type) >> 5) & 1);
     }
     /**
-     * @brief Extract the FrameFormat from a Type byte.
-     * The FrameFormat is a single bit that indicates whether the frame is
+     * @brief Extract the Format from a Type byte.
+     * The Format is a single bit that indicates whether the frame is
      * a data frame or a remote frame.
      * @note The extraction is performed by right-shifting to select the fourth bit
      * and masking out all other bits.
      * @param type The Type byte to extract from.
-     * @return The extracted FrameFormat.
+     * @return The extracted Format.
      */
-    constexpr FrameFormat extract_frame_format(std::byte type) {
-        return static_cast<FrameFormat>(
+    constexpr Format extract_frame_format(std::byte type) {
+        return static_cast<Format>(
             (static_cast<std::uint8_t>(type) >> 4) & 1);
     }
     /**
@@ -441,17 +438,17 @@ namespace USBCANBridge {
     /**
      * @brief Calculate the Type byte for a VariableFrame based on its properties.
      * This function determines the appropriate Type byte for a VariableFrame
-     * based on the frame's FrameType, FrameFormat, and data length code (DLC).
-     * @param frame_type The FrameType of the VariableFrame
-     * @param frame_fmt The FrameFormat of the VariableFrame
+     * based on the frame's CANVersion, Format, and data length code (DLC).
+     * @param frame_type The CANVersion of the VariableFrame
+     * @param frame_fmt The Format of the VariableFrame
      * @param dlc The data length code (DLC) of the VariableFrame
      * @note The Type byte is constructed as follows:
      *
      * - Bits 7-6: Type base byte (0xC0 for VariableFrame)
      *
-     * - Bit 5: FrameType (0 for STD, 1 for EXT)
+     * - Bit 5: CANVersion (0 for STD, 1 for EXT)
      *
-     * - Bit 4: FrameFormat (0 for DATA, 1 for REMOTE)
+     * - Bit 4: Format (0 for DATA, 1 for REMOTE)
      *
      * - Bits 3-0: DLC (0-8)
      *
@@ -462,7 +459,7 @@ namespace USBCANBridge {
      */
     template<typename T>
     constexpr std::enable_if_t<is_variable_frame_v<T>, std::byte>
-    compute_type(FrameType frame_type, FrameFormat frame_fmt, std::size_t dlc) {
+    compute_type(CANVersion frame_type, Format frame_fmt, std::size_t dlc) {
         // Combine all bit operations into a single expression
         return static_cast<std::byte>(
             static_cast<std::uint8_t>(Type::DATA_VARIABLE) |

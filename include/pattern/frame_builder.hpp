@@ -29,7 +29,7 @@ namespace USBCANBridge {
  * at each step. Operations are compile-time restricted to appropriate
  * frame types using SFINAE.
  *
- * @tparam FrameType The type of frame to build (FixedFrame, VariableFrame, ConfigFrame)
+ * @tparam CANVersion The type of frame to build (FixedFrame, VariableFrame, ConfigFrame)
  */
 
     template<typename Frame>
@@ -156,7 +156,7 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<std::is_same_v<T, FixedFrame>, FrameBuilder&>
-            frame_type(FrameType type) {
+            frame_type(CANVersion type) {
                 auto result = frame_.set_frame_type(type);
                 if (!result) {
                     throw std::runtime_error("FrameBuilder: " + result.describe());

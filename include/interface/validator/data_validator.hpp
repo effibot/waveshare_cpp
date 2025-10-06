@@ -9,7 +9,6 @@
  */
 
 #pragma once
-#include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
 #include "../enums/protocol.hpp"
 
@@ -89,9 +88,9 @@ namespace USBCANBridge {
              * @param format The format byte to validate.
              * @return Result<bool> True if valid, false if invalid, or an error status on failure.
              */
-            static Result<bool> validate_format(FrameFormat format) {
-                if (format == FrameFormat::DATA_VARIABLE ||
-                    format == FrameFormat::REMOTE_VARIABLE) {
+            static Result<bool> validate_format(Format format) {
+                if (format == Format::DATA_VARIABLE ||
+                    format == Format::REMOTE_VARIABLE) {
                     return Result<bool>::success(true);
                 }
                 return Result<bool>::error(Status::WBAD_FORMAT);

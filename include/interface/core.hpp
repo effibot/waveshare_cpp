@@ -31,15 +31,15 @@ namespace USBCANBridge {
      */
     template<typename Frame>
     class CoreInterface {
-        // * Alias for traits
-        using traits = frame_traits_t<Frame>;
-        using layout = layout_t<Frame>;
-        using storage = storage_t<Frame>;
 
         protected:
             // * Reference to traits
-            traits frame_traits_;
-            storage frame_storage_;
+            using frame_traits_t = FrameTraits<Frame>;
+            frame_traits_t traits_;
+            // * Frame layout
+            alignas(alignof(layout_t<Frame>)) mutable layout_t<Frame> layout_;
+            // * Frame storage
+            alignas(alignof(storage_t<Frame>)) mutable storage_t<Frame> frame_storage_;
 
             // * CRTP helper to access derived class methods
             Frame& derived() {
@@ -52,8 +52,7 @@ namespace USBCANBridge {
             }
 
             // * Prevent this class from being instantiated directly
-            CoreInterface() : frame_storage_(frame_traits_.frame_buffer.data(),
-                    frame_traits_.frame_buffer.size()) {
+            CoreInterface() : frame_storage_(traits_.frame_buffer) {
                 static_assert(!std::is_same_v<Frame, CoreInterface>,
                     "CoreInterface cannot be instantiated directly");
                 // Initialize constant fields
@@ -70,7 +69,7 @@ namespace USBCANBridge {
                 // Initialize the frame storage with default values
                 std::fill(std::begin(frame_storage_), std::end(frame_storage_), std::byte(0x00));
                 // Set the Start byte
-                frame_storage_[layout::START_OFFSET] = to_byte(Constants::START_BYTE);
+                frame_storage_[layout_.START] = to_byte(Constants::START_BYTE);
                 // Call derived class to initialize fixed fields
                 derived().impl_init_fields();
                 return;
@@ -78,71 +77,64 @@ namespace USBCANBridge {
 
         public:
 
+            // === Access to Internal Storage ===
+            /**
+             * @brief Get a mutable reference to the internal frame storage.
+             * This allows read-write access to the raw frame data.
+             * @return storage_t& Mutable reference to the internal frame storage.
+             */
+            storage_t<Frame>& get_storage() {
+                return frame_storage_;
+            }
+            /**
+             * @brief Get a const reference to the internal frame storage.
+             * This allows read-only access to the raw frame data.
+             * @return const storage_t& Const reference to the internal frame storage.
+             */
+            const storage_t<Frame>& get_storage() const {
+                return frame_storage_;
+            }
+
+
+            // === Access to Layout ===
+            /**
+             * @brief Get a const reference to the frame layout.
+             * This allows read-only access to the layout information.
+             * @return const layout_t& Const reference to the frame layout.
+             */
+            const layout_t<Frame>& get_layout() const {
+                return layout_;
+            }
+
             // === Common Frame Methods ===
-
-            /**
-             * @brief Get mutable access to frame storage (for checksum updates).
-             * This is const because updating the checksum doesn't change the logical state.
-             *
-             * @return Result<storage*> A pointer to mutable frame storage.
-             */
-            Result<storage*> get_mutable_storage() const {
-                return Result<storage*>::success(&const_cast<storage&>(frame_storage_));
-            }
-
-            /**
-             * @brief Serialize the frame (it's internal storage) into a byte array.
-             *
-             * @return Result<span<const std::byte> > A span representing the serialized frame data.
-             */
-            Result<span<const std::byte> > serialize() const {
-                return Result<span<const std::byte> >::success(frame_storage_);
-            }
-
-            /**
-             * @brief Deserialize an incoming byte array to create a frame.
-             * @param data A span representing the serialized frame data.
-             * @return Result<Status> Status::SUCCESS on success, or an error status on failure.
-             * @note This calls derived().deserialize() for frame-specific deserialization.
-             */
-            Result<void> deserialize(span<const std::byte> data) {
-                // * call derived class to perform deserialization
-                auto result = derived().impl_deserialize(data);
-                if (!result) {
-                    return Result<void>::error(result.error(), "CoreInterface::deserialize");
-                }
-                return Result<void>::success();
-            }
 
             /**
              * @brief Clear the frame data.
              * Reset the frame to its initial state.
-             * @return Result<Status> Status::SUCCESS on success, or an error status on failure.
              * @note This will zero out the frame storage and re-initialize constant fields.
              */
-            Result<void> clear() {
+            void clear() {
                 std::fill(std::begin(frame_storage_), std::end(frame_storage_), 0x00);
                 init_fields();
-                return Result<void>::success();
             }
 
             /**
              * @brief Print the frame in a human-readable format.
-             * @return Result<std::string> A string representation of the frame.
+             * @return std::string A string representation of the frame.
              * @note This calls derived().to_string() for frame-specific string conversion.
              */
-            Result<std::string> to_string() const {
+            std::string to_string() const {
                 return dump_frame<Frame>(frame_storage_);
             }
             /**
              * @brief Get the size of the frame in bytes.
              * @note If the frame has a fixed size, this returns that size. If variable, it calls derived() to compute the size.
-             * @return Result<std::size_t> The size of the frame in bytes.
+             * @return std::size_t The size of the frame in bytes.
              */
             template<typename T = Frame>
-            Result<std::size_t> size() const {
+            std::size_t size() const {
                 if  constexpr (!is_variable_frame_v<T>) {
-                    return Result<std::size_t>(traits::FRAME_SIZE);
+                    return frame_traits_t::FRAME_SIZE;
                 }
                 return derived().impl_size();
 
@@ -151,52 +143,54 @@ namespace USBCANBridge {
             // === Protocol-Specific Methods ===
             /**
              * @brief Get the Type byte of the frame.
-             * @return Result<Type> The Type byte of the frame.
+             * @return Type The Type byte of the frame.
              * @note This calls derived().get_type() for frame-specific type retrieval.
              */
-            Result<Type> get_type() const {
+            Type get_type() const {
                 return derived().impl_get_type();
-            }
-            /**
-             * @brief Set the Type byte of the frame.
-             * @param type The Type byte to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
-             * @note This calls derived().set_type() for frame-specific type setting.
-             */
-            template<typename T = Frame>
-            std::enable_if_t<!is_variable_frame_v<T>, Result<void> >
-            set_type(Type type) {
-                return derived().impl_set_type(type);
-            }
-            /**
-             * @brief Set the Type byte of the frame.
-             * @return Result<Type> The Type byte of the frame.
-             * @note This calls derived().get_type() for frame-specific type retrieval.
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_variable_frame_v<T>, Result<void> >
-            set_type(std::byte type) {
-                return derived().impl_set_type(type);
             }
 
             /**
-             * @brief Get the FrameType byte of the frame.
-             * @return Result<FrameType> The FrameType byte of the frame.
+             * @brief Set the Type byte of the frame.
+             * @param type The Type byte to set.
+             * @note This calls derived().set_type() for frame-specific type setting.
+             */
+            template<typename T = Frame>
+            std::enable_if_t<!is_variable_frame_v<T>, void>
+            set_type(Type type) {
+                derived().impl_set_type(type);
+            }
+
+            /**
+             * @brief Set the Type byte of the frame.
+             * @param type The Type byte to set.
+             * @note This calls derived().get_type() for frame-specific type retrieval.
+             */
+            template<typename T = Frame>
+            std::enable_if_t<is_variable_frame_v<T>, void>
+            set_type(std::byte type) {
+                derived().impl_set_type(type);
+            }
+
+            /**
+             * @brief Get the CANVersion byte of the frame.
+             * This tells wether the frame uses standard or extended CAN IDs.
+             * @return CANVersion The CANVersion byte of the frame.
              * @note This calls derived().get_frame_type() for frame-specific frame type retrieval.
              */
-            Result<FrameType> get_frame_type() const {
-                return derived().impl_get_frame_type();
+            CANVersion get_frame_type() const {
+                return derived().impl_get_CAN_version();
             }
+
             /**
-             * @brief Set the FrameType byte of the frame.
-             * @param frame_type The FrameType byte to set.
-             * @return Result<void> Status::SUCCESS on success, or an error status on failure.
+             * @brief Set the CANVersion byte of the frame.
+             * @param frame_type The CANVersion byte to set.
              * @note This calls derived().set_frame_type() for frame-specific frame type setting.
              */
             template<typename T = Frame>
-            std::enable_if_t<is_variable_frame_v<T>, Result<void> >
-            set_frame_type(FrameType frame_type) {
-                return derived().impl_set_frame_type(frame_type);
+            std::enable_if_t<is_variable_frame_v<T>, void>
+            set_frame_type(CANVersion frame_type) {
+                derived().impl_set_CAN_version(frame_type);
             }
     };
 }

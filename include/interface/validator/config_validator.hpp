@@ -97,10 +97,10 @@ namespace USBCANBridge {
                 }
 
                 // Check frame type and corresponding filter limits
-                FrameType ft = frame_type.value();
-                if (ft == FrameType::STD_VARIABLE || ft == FrameType::STD_FIXED) {
+                CANVersion ft = frame_type.value();
+                if (ft == CANVersion::STD_VARIABLE || ft == CANVersion::STD_FIXED) {
                     return Result<bool>::success(filter <= MAX_CAN_ID_STD);
-                } else if (ft == FrameType::EXT_VARIABLE || ft == FrameType::EXT_FIXED) {
+                } else if (ft == CANVersion::EXT_VARIABLE || ft == CANVersion::EXT_FIXED) {
                     return Result<bool>::success(filter <= MAX_CAN_ID_EXT);
                 }
                 return Result<bool>::error(Status::WBAD_FILTER);
@@ -119,10 +119,10 @@ namespace USBCANBridge {
                     return Result<bool>::error(frame_type.error());
                 }
                 // Check frame type and corresponding filter limits
-                FrameType ft = frame_type.value();
-                if (ft == FrameType::STD_VARIABLE || ft == FrameType::STD_FIXED) {
+                CANVersion ft = frame_type.value();
+                if (ft == CANVersion::STD_VARIABLE || ft == CANVersion::STD_FIXED) {
                     return Result<bool>::success(mask <= MAX_CAN_ID_STD);
-                } else if (ft == FrameType::EXT_VARIABLE || ft == FrameType::EXT_FIXED) {
+                } else if (ft == CANVersion::EXT_VARIABLE || ft == CANVersion::EXT_FIXED) {
                     return Result<bool>::success(mask <= MAX_CAN_ID_EXT);
                 }
                 return Result<bool>::error(Status::WBAD_MASK);

@@ -35,7 +35,7 @@
  *
  * // Layout access
  * using Layout = layout_t<FixedFrame>;
- * constexpr auto id_offset = Layout::ID_OFFSET;
+ * constexpr auto id = Layout::ID;
  *
  * // Storage access
  * using Storage = typename frame_traits_t<FixedFrame>::StorageType;
@@ -105,25 +105,30 @@ namespace USBCANBridge {
     struct FrameTraits<FixedFrame> {
         static constexpr std::size_t FRAME_SIZE = 20;
         alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
-        using StorageType = std::array<std::byte, FRAME_SIZE>;
+        using StorageType = span<std::byte, FRAME_SIZE>;
 
 
         /**
          * @brief 20-byte Fixed frame byte layout.
          */
         struct Layout {
-            static constexpr std::size_t START_OFFSET = 0;
-            static constexpr std::size_t HEADER_OFFSET = 1;
-            static constexpr std::size_t TYPE_OFFSET = 2;
-            static constexpr std::size_t FRAME_TYPE_OFFSET = 3;
-            static constexpr std::size_t FORMAT_OFFSET = 4;
-            static constexpr std::size_t ID_OFFSET = 5;
+            static constexpr std::size_t START = 0;
+            static constexpr std::size_t HEADER = 1;
+            static constexpr std::size_t TYPE = 2;
+            static constexpr std::size_t CANVERS = 3;
+            static constexpr std::size_t FORMAT = 4;
+            static constexpr std::size_t ID = 5;
             static constexpr std::size_t ID_SIZE = 4;
-            static constexpr std::size_t DLC_OFFSET = 9;
-            static constexpr std::size_t DATA_OFFSET = 10;
+            static constexpr std::size_t DLC = 9;
+            static constexpr std::size_t DATA = 10;
             static constexpr std::size_t DATA_SIZE = 8;
-            static constexpr std::size_t RESERVED_OFFSET = 18;
-            static constexpr std::size_t CHECKSUM_OFFSET = 19;
+            static constexpr std::size_t RESERVED = 18;
+            static constexpr std::size_t CHECKSUM = 19;
+
+            // * Dummy functions for uniformity with VariableFrame layout
+            static constexpr std::size_t id_size(bool extended_id) {
+                return ID_SIZE;
+            }
         };
     };
 
@@ -151,21 +156,25 @@ namespace USBCANBridge {
          * @brief Dynamic layout with helper functions for runtime calculations.
          */
         struct Layout {
-            static constexpr std::size_t START_OFFSET = 0;
-            static constexpr std::size_t TYPE_OFFSET = 1;
-            static constexpr std::size_t ID_OFFSET = 2;
+            static constexpr std::size_t START = 0;
+            static constexpr std::size_t TYPE = 1;
+            static constexpr std::size_t ID = 2;
 
-            // Dynamic offsets - helper functions
-            static constexpr std::size_t data_offset(bool extended_id) {
-                return ID_OFFSET + (extended_id ? 4 : 2);
+            // * Dynamic offsets - helper functions
+            static constexpr std::size_t id_size(bool extended_id) {
+                return extended_id ? MAX_ID_SIZE : MIN_ID_SIZE;
             }
 
-            static constexpr std::size_t end_offset(bool extended_id, std::size_t data_len) {
-                return data_offset(extended_id) + data_len;
+            static constexpr std::size_t data(bool extended_id) {
+                return ID + id_size(extended_id);
+            }
+
+            static constexpr std::size_t end(bool extended_id, std::size_t data_len) {
+                return data(extended_id) + data_len;
             }
 
             static constexpr std::size_t frame_size(bool extended_id, std::size_t data_len) {
-                return end_offset(extended_id, data_len) + 1; // +1 for END byte
+                return end(extended_id, data_len) + 1; // +1 for END byte
             }
         };
     };
@@ -188,20 +197,20 @@ namespace USBCANBridge {
          * @brief Configuration-specific byte layout.
          */
         struct Layout {
-            static constexpr std::size_t START_OFFSET = 0;
-            static constexpr std::size_t HEADER_OFFSET = 1;
-            static constexpr std::size_t TYPE_OFFSET = 2;
-            static constexpr std::size_t BAUD_OFFSET = 3;
-            static constexpr std::size_t FRAME_TYPE_OFFSET = 4;
-            static constexpr std::size_t FILTER_OFFSET = 5;
+            static constexpr std::size_t START = 0;
+            static constexpr std::size_t HEADER = 1;
+            static constexpr std::size_t TYPE = 2;
+            static constexpr std::size_t BAUD = 3;
+            static constexpr std::size_t CANVERS = 4;
+            static constexpr std::size_t FILTER = 5;
             static constexpr std::size_t FILTER_SIZE = 4;
-            static constexpr std::size_t MASK_OFFSET = 9;
+            static constexpr std::size_t MASK = 9;
             static constexpr std::size_t MASK_SIZE = 4;
-            static constexpr std::size_t MODE_OFFSET = 13;
-            static constexpr std::size_t AUTO_RTX_OFFSET = 14;
-            static constexpr std::size_t RESERVED_OFFSET = 15;
+            static constexpr std::size_t MODE = 13;
+            static constexpr std::size_t AUTO_RTX = 14;
+            static constexpr std::size_t RESERVED = 15;
             static constexpr std::size_t RESERVED_SIZE = 4;
-            static constexpr std::size_t CHECKSUM_OFFSET = 19;
+            static constexpr std::size_t CHECKSUM = 19;
         };
     };
 

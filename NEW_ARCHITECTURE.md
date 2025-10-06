@@ -40,9 +40,9 @@ struct FrameTraits<FixedFrame> {
     using StorageType = std::array<std::byte, FRAME_SIZE>;
     
     struct Layout {
-        static constexpr std::size_t ID_OFFSET = 5;
+        static constexpr std::size_t ID = 5;
         static constexpr std::size_t ID_SIZE = 4;
-        static constexpr std::size_t DATA_OFFSET = 10;
+        static constexpr std::size_t DATA = 10;
         static constexpr std::size_t DATA_SIZE = 8;
         // ... all layout constants
     };
@@ -128,7 +128,7 @@ if (!result) {
 ### Layout Access
 ```cpp
 using Layout = layout_t<FixedFrame>;
-auto id_bytes = frame.get_raw_data().subspan(Layout::ID_OFFSET, Layout::ID_SIZE);
+auto id_bytes = frame.get_raw_data().subspan(Layout::ID, Layout::ID_SIZE);
 ```
 
 ### Builder Pattern
