@@ -59,4 +59,11 @@ namespace USBCANBridge {
         checksum_interface_.mark_dirty();
     }
 
+    bool FixedFrame::impl_is_extended() const {
+        // Retrieve the CANVERS byte
+        std::byte canvers = frame_storage_[layout_.CANVERS];
+        // Check if it indicates extended ID
+        return from_byte<CANVersion>(canvers) == CANVersion::EXT_FIXED;
+    }
+
 } // namespace USBCANBridge
