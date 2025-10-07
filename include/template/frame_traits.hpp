@@ -124,11 +124,6 @@ namespace USBCANBridge {
             static constexpr std::size_t DATA_SIZE = 8;
             static constexpr std::size_t RESERVED = 18;
             static constexpr std::size_t CHECKSUM = 19;
-
-            // * Dummy functions for uniformity with VariableFrame layout
-            static constexpr std::size_t id_size(bool extended_id) {
-                return ID_SIZE;
-            }
         };
     };
 
@@ -161,18 +156,45 @@ namespace USBCANBridge {
             static constexpr std::size_t ID = 2;
 
             // * Dynamic offsets - helper functions
+            /**
+             * @brief Get the size of the ID field.
+             * This field is 2 bytes for standard IDs and 4 bytes for extended IDs.
+             * @param extended_id
+             * @return constexpr std::size_t
+             */
             static constexpr std::size_t id_size(bool extended_id) {
                 return extended_id ? MAX_ID_SIZE : MIN_ID_SIZE;
             }
 
+            /**
+             * @brief Offset to the data field.
+             * If there's a payload, it comes right after the ID field.
+             * @param extended_id
+             * @return constexpr std::size_t
+             * @note This does not return the size of the data field, but the offset where it starts. Moreover, does not take into account if in the TYPE byte of the frame the DLC has been set to a value > 0.
+             */
             static constexpr std::size_t data(bool extended_id) {
                 return ID + id_size(extended_id);
             }
 
+            /**
+             * @brief Offset to the END byte.
+             * This comes right after the data field.
+             * @param extended_id
+             * @param data_len Actual length of the data payload (0-8 bytes)
+             * @return constexpr std::size_t
+             */
             static constexpr std::size_t end(bool extended_id, std::size_t data_len) {
                 return data(extended_id) + data_len;
             }
 
+            /**
+             * @brief Total frame size calculation.
+             * This includes START, TYPE, ID, DATA, and END bytes.
+             * @param extended_id
+             * @param data_len Actual length of the data payload (0-8 bytes)
+             * @return constexpr std::size_t
+             */
             static constexpr std::size_t frame_size(bool extended_id, std::size_t data_len) {
                 return end(extended_id, data_len) + 1; // +1 for END byte
             }

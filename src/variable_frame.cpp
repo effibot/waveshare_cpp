@@ -1,222 +1,122 @@
-#include "../include/variable_frame.hpp"
-#include <algorithm>
+#include "../include/frame/variable_frame.hpp"
+
 
 namespace USBCANBridge {
 
-    VariableFrame::VariableFrame() {
-        impl_init_fixed_fields();
+    // === Core impl_*() Methods ===
+    Type VariableFrame::impl_get_type() const {
+        return var_type_interface_.get_type();
     }
 
-    void VariableFrame::impl_init_fixed_fields() {
-        // Start with minimum frame size (START + TYPE + 2-byte ID + END = 5 bytes)
-        storage_.resize(Traits::MIN_FRAME_SIZE);
-        std::fill(storage_.begin(), storage_.end(), std::byte{0});
-
-        // Set up basic frame structure
-        storage_[Layout::START] = to_byte(Constants::START_BYTE);
-        storage_[Layout::TYPE] = std::byte{0}; // Will be set based on ID and data
-
-        // Initialize with standard ID and no data
-        is_extended_id_ = false;
-        data_length_ = 0;
-
-        update_frame_structure();
+    void VariableFrame::impl_set_type(CANVersion ver, Format fmt) {
+        // Update internal state
+        current_version_ = ver;
+        current_format_ = fmt;
+        std::size_t dlc = impl_get_dlc();
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
+        // Update the Type field immediately
+        var_type_interface_.update_type(current_version_, current_format_, dlc);
+        return;
     }
 
-    void VariableFrame::update_frame_structure() {
-        std::size_t new_size = calculate_frame_size(is_extended_id_, data_length_);
-        storage_.resize(new_size);
-
-        // Set END byte at the correct position
-        storage_[new_size - 1] = to_byte(Constants::END_BYTE);
-
-        // Update type byte with current frame configuration
-        std::byte type_byte = static_cast<std::byte>(
-            (is_extended_id_ ? 1 : 0) |  // Bit 0: Extended ID flag
-            (static_cast<uint8_t>(data_length_) << 1)  // Bits 1-4: DLC
-        );
-        storage_[Layout::TYPE] = type_byte;
+    bool VariableFrame::impl_is_extended() const {
+        return current_version_ == CANVersion::EXT_VARIABLE;
+    }
+    // === Data impl_*() Methods ===
+    void VariableFrame::impl_set_dlc(std::size_t dlc) {
+        if (dlc > traits_.MAX_DATA_SIZE) {
+            throw std::out_of_range("DLC exceeds maximum for VariableFrame");
+        }
+        // Update the cached DLC
+        current_dlc_ = dlc;
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
     }
 
-    // ==== BASEFRAME INTERFACE IMPLEMENTATIONS ====
-
-    Result<void> VariableFrame::impl_serialize(span<std::byte> buffer) const {
-        if (buffer.size() < storage_.size()) {
-            return Result<void>::error(Status::WBAD_LENGTH, "serialize");
-        }
-
-        std::copy(storage_.begin(), storage_.end(), buffer.begin());
-        return Result<void>::success("serialize");
+    std::size_t VariableFrame::impl_get_dlc() const {
+        return current_dlc_;
     }
-
-    Result<void> VariableFrame::impl_deserialize(span<const std::byte> data) {
-        if (data.size() < Traits::MIN_FRAME_SIZE || data.size() > Traits::MAX_FRAME_SIZE) {
-            return Result<void>::error(Status::WBAD_LENGTH, "deserialize");
-        }
-
-        storage_.assign(data.begin(), data.end());
-
-        // Validate basic structure
-        if (storage_[Layout::START] != to_byte(Constants::START_BYTE)) {
-            return Result<void>::error(Status::WBAD_START, "deserialize");
-        }
-
-        if (storage_.back() != to_byte(Constants::END_BYTE)) {
-            return Result<void>::error(Status::WBAD_DATA, "deserialize");
-        }
-
-        // Parse type byte to update cached values
-        std::byte type_byte = storage_[Layout::TYPE];
-        is_extended_id_ = (static_cast<uint8_t>(type_byte) & 0x01) != 0;
-        data_length_ = (static_cast<uint8_t>(type_byte) >> 1) & 0x0F;
-
-        return Result<void>::success("deserialize");
+    CANVersion VariableFrame::impl_get_CAN_version() const {
+        return current_version_;
     }
-
-    Result<bool> VariableFrame::impl_validate() const {
-        if (storage_.size() < Traits::MIN_FRAME_SIZE || storage_.size() > Traits::MAX_FRAME_SIZE) {
-            return Result<bool>::success(false, "validate");
+    void VariableFrame::impl_set_CAN_version(CANVersion ver) {
+        // Update internal state if different
+        if (current_version_ == ver) {
+            return;
         }
-
-        if (storage_[Layout::START] != to_byte(Constants::START_BYTE)) {
-            return Result<bool>::success(false, "validate");
-        }
-
-        if (storage_.back() != to_byte(Constants::END_BYTE)) {
-            return Result<bool>::success(false, "validate");
-        }
-
-        return Result<bool>::success(true, "validate");
+        current_version_ = ver;
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
+        // Update the ID field size if needed
+        std::size_t id_size = layout_.id_size(impl_is_extended());
+        auto [first_part, second_part] = split_buffer(layout_.ID);
+        // Resize the first part to accommodate the new ID size
+        first_part.resize(layout_.ID + id_size);
+        // Merge back the buffers
+        merge_buffer(first_part, second_part);
+        return;
     }
-
-    span<const std::byte> VariableFrame::impl_get_raw_data() const {
-        return span<const std::byte>(storage_.data(), storage_.size());
+    Format VariableFrame::impl_get_format() const {
+        return current_format_;
     }
-
-    Result<std::size_t> VariableFrame::impl_size() const {
-        return Result<std::size_t>::success(storage_.size(), "size");
+    void VariableFrame::impl_set_format(Format format) {
+        current_format_ = format;
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
     }
-
-    Result<void> VariableFrame::impl_clear() {
-        impl_init_fixed_fields();
-        return Result<void>::success("clear");
+    uint32_t VariableFrame::impl_get_CAN_id() const {
+        // ID is stored in 2 or 4 bytes, little-endian
+        return bytes_to_int_le<uint32_t>(get_CAN_id_span());
     }
-
-    // ==== DATA FRAME OPERATIONS ====
-
-    Result<void> VariableFrame::impl_set_can_id(uint32_t id) {
-        bool new_extended = (id > 0x7FF);
-
-        if (new_extended && id > 0x1FFFFFFF) {
-            return Result<void>::error(Status::WBAD_DATA, "set_can_id");
+    void VariableFrame::impl_set_CAN_id(uint32_t id) {
+        // ID is stored in 2 or 4 bytes, little-endian (variable size for VariableFrame)
+        std::size_t id_size = layout_.id_size(impl_is_extended());
+        auto id_bytes = int_to_bytes_le<uint32_t>(id);
+        auto id_span = get_CAN_id_span();
+        // Check that the span is large enough and expand if necessary
+        if (id_span.size() < id_size) {
+            auto [first_part, second_part] = split_buffer(layout_.ID);
+            // Resize the first part to accommodate the larger ID
+            first_part.resize(layout_.ID + id_size);
+            // Merge back the buffers
+            merge_buffer(first_part, second_part);
+            // Refresh the id_span after resizing
+            id_span = get_CAN_id_span();
         }
-
-        is_extended_id_ = new_extended;
-        update_frame_structure();
-
-        std::size_t id = Layout::ID;
-
-        if (is_extended_id_) {
-            // Store 4-byte extended ID in big endian
-            storage_[id] = static_cast<std::byte>((id >> 24) & 0xFF);
-            storage_[id + 1] = static_cast<std::byte>((id >> 16) & 0xFF);
-            storage_[id + 2] = static_cast<std::byte>((id >> 8) & 0xFF);
-            storage_[id + 3] = static_cast<std::byte>(id & 0xFF);
-        } else {
-            // Store 2-byte standard ID in big endian
-            storage_[id] = static_cast<std::byte>((id >> 8) & 0xFF);
-            storage_[id + 1] = static_cast<std::byte>(id & 0xFF);
-        }
-
-        return Result<void>::success("set_can_id");
-    }
-
-    Result<uint32_t> VariableFrame::impl_get_can_id() const {
-        std::size_t id = Layout::ID;
-        uint32_t id = 0;
-
-        if (is_extended_id_) {
-            id = (static_cast<uint32_t>(storage_[id]) << 24) |
-                (static_cast<uint32_t>(storage_[id + 1]) << 16) |
-                (static_cast<uint32_t>(storage_[id + 2]) << 8) |
-                static_cast<uint32_t>(storage_[id + 3]);
-        } else {
-            id = (static_cast<uint32_t>(storage_[id]) << 8) |
-                static_cast<uint32_t>(storage_[id + 1]);
-        }
-
-        return Result<uint32_t>::success(id, "get_can_id");
-    }
-
-    Result<void> VariableFrame::impl_set_data(span<const std::byte> data) {
-        if (data.size() > 8) {
-            return Result<void>::error(Status::WBAD_LENGTH, "set_data");
-        }
-
-        data_length_ = data.size();
-        update_frame_structure();
-
-        std::size_t data = Layout::data(is_extended_id_);
-        std::copy(data.begin(), data.end(), storage_.begin() + data);
-
-        return Result<void>::success("set_data");
+        // Overwrite the ID bytes in the frame storage
+        std::copy(id_bytes.begin(), id_bytes.begin() + id_size, id_span.begin());
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
     }
 
     span<const std::byte> VariableFrame::impl_get_data() const {
-        std::size_t data = Layout::data(is_extended_id_);
-        return span<const std::byte>(storage_.data() + data, data_length_);
+        std::size_t dlc = impl_get_dlc();
+        return frame_storage_.subspan(layout_.data(impl_is_extended()), dlc);
     }
 
-    Result<void> VariableFrame::impl_set_dlc(std::byte dlc) {
-        uint8_t dlc_value = static_cast<uint8_t>(dlc);
-        if (dlc_value > 8) {
-            return Result<void>::error(Status::WBAD_DATA, "set_dlc");
+    void VariableFrame::impl_set_data(span<const std::byte> data) {
+        std::size_t dlc = data.size();
+        if (dlc > traits_.MAX_DATA_SIZE) {
+            throw std::out_of_range("Data size exceeds maximum for VariableFrame");
         }
-
-        data_length_ = dlc_value;
-        update_frame_structure();
-
-        return Result<void>::success("set_dlc");
+        // Mark Type field as dirty to ensure it's recomputed before sending
+        var_type_interface_.mark_dirty();
+        // If DLC has changed, we may need to resize the internal buffer
+        if (dlc != current_dlc_) {
+            // Update the cached DLC
+            current_dlc_ = dlc;
+            auto [first_part, second_part] = split_buffer(layout_.data(impl_is_extended()));
+            // Resize the first part to accommodate the new data size
+            first_part.resize(layout_.data(impl_is_extended()) + dlc);
+            // Merge back the buffers
+            merge_buffer(first_part, second_part);
+        }
+        // Copy data into frame storage
+        std::copy(data.begin(), data.end(),
+            frame_storage_.begin() + layout_.data(impl_is_extended()));
+        return;
     }
 
-    Result<std::byte> VariableFrame::impl_get_dlc() const {
-        return Result<std::byte>::success(static_cast<std::byte>(data_length_), "get_dlc");
-    }
-
-    // ==== VARIABLE FRAME SPECIFIC OPERATIONS ====
-
-    bool VariableFrame::is_extended_id() const {
-        return is_extended_id_;
-    }
-
-    std::size_t VariableFrame::get_data_length() const {
-        return data_length_;
-    }
-
-    std::byte VariableFrame::get_type_byte() const {
-        return storage_[Layout::TYPE];
-    }
-
-    Result<void> VariableFrame::set_type_byte(std::byte type_byte) {
-        storage_[Layout::TYPE] = type_byte;
-
-        // Update cached values from type byte
-        is_extended_id_ = (static_cast<uint8_t>(type_byte) & 0x01) != 0;
-        data_length_ = (static_cast<uint8_t>(type_byte) >> 1) & 0x0F;
-
-        update_frame_structure();
-        return Result<void>::success("set_type_byte");
-    }
-
-    // ==== UTILITIES ====
-
-    std::size_t VariableFrame::calculate_frame_size(bool extended_id, std::size_t data_length) {
-        return Layout::frame_size(extended_id, data_length);
-    }
-
-    bool VariableFrame::validate_structure() const {
-        auto result = impl_validate();
-        return result && result.value();
-    }
 
 } // namespace USBCANBridge

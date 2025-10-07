@@ -1,11 +1,7 @@
 #pragma once
 #include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
-#include <boost/core/span.hpp>
-#include <cstddef>
-#include <cstdint>
 #include <numeric>
-#include <vector>
 
 using namespace boost;
 namespace USBCANBridge {

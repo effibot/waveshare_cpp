@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../interface/data.hpp"
+#include "../interface/vartype.hpp"
 
 namespace USBCANBridge {
     /**
@@ -16,93 +17,188 @@ namespace USBCANBridge {
      * - Variable data payload (0-8 bytes)
      * - Type-safe operations through BaseFrame interface
      * - No checksum - uses END byte terminator
-     *
+     * - Automatic Type field reconstruction via VarTypeInterface
+     * - Cached Format, CANVersion, and DLC for efficient manipulation, without bitwise ops. Type field consistency is ensured via VarTypeInterface and the dirty bit mechanism.
      * Structure: [START][TYPE][ID0-ID3][DATA0-DATA7][END]
      */
     class VariableFrame : public DataInterface<VariableFrame> {
-        // * Alias for traits
-        using traits = frame_traits_t<VariableFrame>;
-        using layout = layout_t<VariableFrame>;
-        using storage = storage_t<VariableFrame>;
+        /**
+         * From FrameTraits<VariableFrame>, we have:
+         * - pre-allocated buffer of 5 bytes (START, TYPE, ID0, ID1, END), w/o payload
+         * - layout structure with helpers for dynamic offsets and sizes
+         * - same storage type (span<std::byte>) as other frames, but dynamic size
+         */
 
+        private:
+            // * Internal state variables
+            Format current_format_;
+            CANVersion current_version_;
+            std::size_t current_dlc_ = 0; // Data Length Code (0-8)
+            // * Helper interface for Type field manipulation
+            VarTypeInterface<VariableFrame> var_type_interface_;
 
+            // # Utility to split and combine the buffer when size changes
+
+            /**
+             * @brief Utility to split the internal buffer up to a given offset.
+             * This will generate two new buffers, allocating new memory as needed.
+             * The first buffer will contain the data up to the given offset (included), the second buffer will contain the rest.
+             * @param offset The offset to split at (must be <= current size)
+             * @throw std::out_of_range if the offset is out of bounds.
+             * @note This will not update the internal state of the frame and should be used alongside the `merge_buffer()` method to reconstruct a valid buffer and update the frame.
+             * @return A pair of vectors containing the two parts of the split buffer.
+             */
+            std::pair<std::vector<std::byte>, std::vector<std::byte> >
+            split_buffer(std::size_t offset) const {
+                if (offset > impl_size()) {
+                    throw std::out_of_range("Offset out of bounds in split_buffer");
+                }
+                auto full_span = this->get_storage();
+                std::vector<std::byte> first_part(full_span.begin(), full_span.begin() + offset);
+                std::vector<std::byte> second_part(full_span.begin() + offset, full_span.end());
+                return {first_part, second_part};
+            }
+            /**
+             * @brief Utility to merge two buffers into the internal storage.
+             * This will concatenate the two buffers and update the internal storage.
+             * @param first The first buffer part.
+             * @param second The second buffer part.
+             * @throw std::invalid_argument if the resulting size is out of bounds (5-15 bytes).
+             * @note This will update the internal state of the frame to reflect the new size.
+             */
+            void merge_buffer(const std::vector<std::byte>& first,
+                const std::vector<std::byte>& second) {
+                std::size_t new_size = first.size() + second.size();
+                if (new_size < traits_.MIN_FRAME_SIZE || new_size > traits_.MAX_FRAME_SIZE) {
+                    throw std::invalid_argument(
+                        "Resulting buffer size out of bounds in merge_buffer");
+                }
+                // Create new buffer and copy data
+                std::vector<std::byte> new_buffer;
+                new_buffer.reserve(new_size);
+                new_buffer.insert(new_buffer.end(), first.begin(), first.end());
+                new_buffer.insert(new_buffer.end(), second.begin(), second.end());
+                // Update the frame storage to the new buffer
+                traits_.frame_buffer = std::move(new_buffer);
+                frame_storage_ = span<std::byte>(traits_.frame_buffer.data(), new_size);
+                // Mark Type field as dirty to ensure it's recomputed before sending
+                var_type_interface_.mark_dirty();
+            }
         public:
             // * Constructors
-            VariableFrame() : DataInterface<VariableFrame>() {
-                // Initialize constant fields
-                impl_init_fields();
+            VariableFrame() : DataInterface<VariableFrame>(),
+                current_format_(Format::DATA_VARIABLE),
+                current_version_(CANVersion::STD_VARIABLE),
+                var_type_interface_(*this) {
+                // * The base constructor will call impl_init_fields(), here defined.
             }
 
             // === Core impl_*() Methods ===
             /**
              * @brief Initialize the frame fields.
              * This is called during construction to set up the frame.
-             *
              * @see File: include/protocol.hpp for constant definitions.
-             *
              * @see File: README.md for frame structure details.
-             *
              * @note For a VariableFrame, the following fields are initialized:
-             *
-             * - `START` (1 byte): Start byte, always `0xAA` (already set in CoreInterface)
-             * - `TYPE` (1 byte): Frame type, always `0xC0` for variable frames
-             * - `ID` (4 bytes): CAN ID, little-endian, initialized to 0
-             * - `DATA` (0-8 bytes): CAN payload, initialized as empty.
-             * - `END` (1 byte): End byte, always `0x55`
+             * ```
+             * [START][TYPE][ID0-ID1][END]
+             * ```
+             * - `[START]` = `Constants::START_BYTE` (already set in CoreInterface)
+             * - `[TYPE]` = `Type::DATA_VARIABLE`
+             * - `[END]` = `Constants::END_BYTE`
              */
             void impl_init_fields() {
-                // * Set the Type byte to default variable frame type
-                frame_storage_[layout::TYPE] = to_byte(Type::DATA_VARIABLE);
-                // * Initialize ID to 0
-                frame_storage_[layout::ID] = to_byte(Constants::RESERVED);
-                // * Compute the initial size with 0 data length
-                std::size_t initial_size = layout::frame_size(false, 0);
-                // * Set the END byte at the correct position
-                frame_storage_[initial_size - 1] = to_byte(Constants::END_BYTE);
+                // * Set the Type byte
+                frame_storage_[layout_.TYPE] = to_byte(Type::DATA_VARIABLE);
+                // * Set the END byte
+                frame_storage_[layout_.end(false, 0) - 1] = to_byte(Constants::END_BYTE);
+                // * Mark the Type field as dirty to ensure it's computed before sending
+                var_type_interface_.mark_dirty();
+                return;
             }
 
             /**
-             * @brief Get the current size of the frame in bytes.
-             * This includes all fields: START, TYPE, ID, DATA, END.
-             * The size is dynamic based on the current DLC (data length code).
-             *
-             * @return std::size_t The current size of the frame in bytes.
+             * @brief Get the size of the frame in bytes.
+             * This is dynamic, based on current ID and data sizes.
+             * @return std::size_t The size of the frame in bytes.
              */
-            std::size_t impl_size() const;
+            std::size_t impl_size() const {
+                bool extended = impl_is_extended();
+                std::size_t data_len = impl_get_dlc();
+                return layout_.frame_size(extended, data_len);
+            }
 
             /**
-             * @brief Validate the frame.
-             * This checks that all fields are valid according to the protocol.
+             * @brief Get the frame Type byte.
+             * The Type byte indicates the CAN version (standard/extended), the format (data/remote), and the length of the data payload (DLC).
+             * @return `Type` The Type byte.
+             * @note The Type byte is composed of:
              *
-             * @return bool True if valid, false if invalid.
+             * - Bits 7-6: constant Type byte for variable frames (`0xC0`)
+             *
+             * - Bit 5: CAN version (0 = standard, 1 = extended)
+             *
+             * - Bit 4: Frame format (0 = data frame, 1 = remote frame)
+             *
+             * - Bits 3-0: Data Length Code (DLC), number of data
+             *
+             * ! This gets a computed Type byte from the cached values using VarTypeInterface
              */
-            bool impl_validate() const;
-
+            // ! Check this cast as the content of the TYPE byte is not a valid enum value but the sum of each sub-field
+            Type impl_get_type() const;
 
             /**
-             * @brief Get the Type byte from the frame storage.
+             * @brief Set the frame Type byte.
+             * The Type byte indicates the CAN version (standard/extended), the format (data/remote), and the length of the data payload (DLC).
+             * @warning Changing the type marks the frame as dirty, requiring checksum recomputation.
+             * @note As the DLC is automatically managed when setting data, this method does not allow setting it directly. Instead, it is derived from the actual data length.
+             * @param ver The CAN version (standard/extended)
+             * @param fmt The frame format (data/remote)
+             * @note The Type byte is composed of:
              *
-             * @return std::byte The Type byte.
-             */
-            std::byte impl_get_type() const;
-
-            /**
-             * @brief Set the Type byte in the frame storage.
+             * - Bits 7-6: constant Type byte for variable frames (`0xC0`)
              *
-             * @param type The Type byte to set.
+             * - Bit 5: CAN version (0 = standard, 1 = extended)
+             *
+             * - Bit 4: Frame format (0 = data frame, 1 = remote frame)
+             *
+             * - Bits 3-0: Data Length Code (DLC), number of data
+             *
+             * This means that the provided value is not a valid enum but is casted to `Type` for convenience.
              */
-            void impl_set_type(std::byte type);
+            void impl_set_type(CANVersion ver, Format fmt);
 
+
+            // === DataFrame impl_*() Methods ===
             /**
-             * @brief Deserialize the frame from a byte array.
-             * This method copies the data into internal storage and performs complete validation before returning.
-             * @param data A span representing the serialized frame data.
-             * @note This method copies the data into internal storage and marks the checksum as dirty.
+             * @brief Check if the frame is using an extended CAN ID.
+             * @return true if extended (29-bit), false if standard (11-bit)
+             * @note This uses the cached current_version_ variable for efficiency.
              */
-            void impl_deserialize(span<const std::byte> data);
+            bool impl_is_extended() const;
 
-        // === DataFrame impl_*() Methods ===
+
+        private:
+            /**
+             * @brief Set the data length code (DLC) for the frame.
+             * @param dlc The DLC value to set (0-8).
+             * @throw std::out_of_range if the DLC is out of bounds.
+             * @warning Changing the DLC marks the frame as dirty, requiring type recomputation when needed.
+             * @note This updates the internal cached DLC value.
+             */
+            void impl_set_dlc(std::size_t dlc);
+
         public:
+            /**
+             * @brief Get the frame version from the internal storage.
+             * @return CANVersion The frame version
+             */
+            CANVersion impl_get_CAN_version() const;
+            /**
+             * @brief Set the frame version in the internal storage.
+             * @param ver The CANVersion to set. Must be one of the valid enum values.
+             */
+            void impl_set_CAN_version(CANVersion ver);
             /**
              * @brief Get the frame format from the internal storage.
              * @return Format The frame format
@@ -110,49 +206,49 @@ namespace USBCANBridge {
             Format impl_get_format() const;
 
             /**
-             * @brief Set the Frame Format object.
+             * @brief Set the frame format in the internal storage.
              * @param format The Format to set. Must be one of the valid enum values.
              */
             void impl_set_format(Format format);
+
             /**
              * @brief Get the frame ID from the internal storage.
+             * @note The ID is stored in little-endian format.
              * @return uint32_t The CAN ID
              */
-            uint32_t impl_get_id() const;
+            uint32_t impl_get_CAN_id() const;
+
             /**
              * @brief Set the frame ID in the internal storage.
-             * @warning Changing the ID marks the frame as dirty, requiring checksum recomputation.
+             * @note The ID is stored in little-endian format.
              * @param id The frame ID to set.
              */
-            void impl_set_id(uint32_t id);
+            void impl_set_CAN_id(uint32_t id);
+
             /**
              * @brief Get the data length code (DLC) from the internal storage.
-             * @return std::size_t The DLC value
+             * @return std::size_t The DLC value\
+             * @note This uses the cached current_dlc_ variable for efficiency.
              */
             std::size_t impl_get_dlc() const;
+
             /**
              * @brief Get a read-only view of the data payload.
              * @return span<const std::byte> View of the data
              */
             span<const std::byte> impl_get_data() const;
+
+            /**
+             * @brief Get a modifiable view of the data payload.
+             * @return span<std::byte> Mutable view of the data
+             */
+            span<std::byte> impl_get_data();
+
             /**
              * @brief Set the data payload in the internal storage.
-             * @warning Changing the data marks the frame as dirty, requiring checksum recomputation.
              * @param data A span representing the data payload to set.
              */
             void impl_set_data(span<const std::byte> data);
-            /**
-             * @brief Check if the frame is using an extended CAN ID.
-             * @return bool True if extended, false if standard
-             */
-            bool impl_is_extended() const;
-
-        private:
-            /**
-             * @brief Set the DLC field in the Type byte.
-             * @param dlc The data length code (DLC) to set.
-             */
-            void impl_set_dlc(std::size_t dlc);
 
     };
 }

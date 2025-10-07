@@ -89,9 +89,38 @@ namespace USBCANBridge {
             std::size_t impl_size() const {
                 return traits_.FRAME_SIZE;
             }
-
+            /**
+             * @brief Get the frame Type byte.
+             * The Type byte indicates the frame type and format.
+             * @return std::byte The Type byte.
+             */
+            std::byte impl_get_type() const {
+                return frame_storage_[layout_.TYPE];
+            }
+            /**
+             * @brief Set the frame Type byte.
+             * @warning Changing the type marks the frame as dirty, requiring checksum recomputation.
+             * @param type The Type byte to set. Must be one of the valid enum values.
+             */
+            void impl_set_type(Type type) {
+                frame_storage_[layout_.TYPE] = to_byte(type);
+                // Mark checksum as dirty since we changed the frame
+                checksum_interface_.mark_dirty();
+            }
 
             // === DataFrame impl_*() Methods ===
+            /**
+             * @brief Get the version of the CAN ID (standard/extended).
+             * @return CANVersion The CANVersion byte of the frame.
+             */
+            CANVersion impl_get_CAN_version() const;
+
+            /**
+             * @brief Set the version of the CAN ID (standard/extended).
+             *
+             */
+            void impl_set_CAN_version(CANVersion ver);
+
             /**
              * @brief Get the frame format from the internal storage.
              * @return Format The frame format
@@ -108,14 +137,14 @@ namespace USBCANBridge {
              * @note The ID is stored in little-endian format.
              * @return uint32_t The CAN ID
              */
-            uint32_t impl_get_can_id() const;
+            uint32_t impl_get_CAN_id() const;
             /**
              * @brief Set the frame ID in the internal storage.
              * @note The ID is stored in little-endian format.
              * @warning Changing the ID marks the frame as dirty, requiring checksum recomputation.
              * @param id The frame ID to set.
              */
-            void impl_set_id(uint32_t id);
+            void impl_set_CAN_id(uint32_t id);
             /**
              * @brief Get the data length code (DLC) from the internal storage.
              * @return std::size_t The DLC value

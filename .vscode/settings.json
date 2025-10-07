@@ -150,6 +150,18 @@
     "valarray": "cpp",
     "variant": "cpp",
     "expected": "cpp",
-    "spanstream": "cpp"
+    "spanstream": "cpp",
+    "barrier": "cpp",
+    "cuchar": "cpp",
+    "regex": "cpp",
+    "flat_map": "cpp",
+    "flat_set": "cpp",
+    "generator": "cpp",
+    "latch": "cpp",
+    "print": "cpp",
+    "scoped_allocator": "cpp",
+    "stack": "cpp",
+    "stacktrace": "cpp",
+    "syncstream": "cpp"
   }
 }

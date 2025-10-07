@@ -3,7 +3,18 @@
 #include <algorithm>
 
 namespace USBCANBridge {
+
     // === FixedFrame impl_*() Methods ===
+    CANVersion FixedFrame::impl_get_CAN_version() const {
+        std::byte frame_type = frame_storage_[layout_.CANVERS];
+        return from_byte<CANVersion>(frame_type);
+    }
+    void FixedFrame::impl_set_CAN_version(CANVersion ver) {
+        frame_storage_[layout_.CANVERS] = to_byte(ver);
+        // Mark checksum as dirty since we changed the frame
+        checksum_interface_.mark_dirty();
+    }
+
     Format FixedFrame::impl_get_format() const {
         std::byte frame_fmt = frame_storage_[layout_.FORMAT];
         return from_byte<Format>(frame_fmt);
@@ -14,15 +25,15 @@ namespace USBCANBridge {
         checksum_interface_.mark_dirty();
     }
 
-    uint32_t FixedFrame::impl_get_can_id() const {
+    uint32_t FixedFrame::impl_get_CAN_id() const {
         // ID is stored in 4 bytes, little-endian
-        return bytes_to_int_le<uint32_t>(get_can_id_span());
+        return bytes_to_int_le<uint32_t>(get_CAN_id_span());
     }
-    void FixedFrame::impl_set_id(uint32_t id) {
+    void FixedFrame::impl_set_CAN_id(uint32_t id) {
         // ID is stored in 4 bytes, little-endian (fixed size for FixedFrame)
         constexpr std::size_t id_size = layout_t<FixedFrame>::ID_SIZE;
         auto id_bytes = int_to_bytes_le<uint32_t, id_size>(id);
-        auto id_span = get_can_id_span();
+        auto id_span = get_CAN_id_span();
         // Overwrite the ID bytes in the frame storage
         std::copy(id_bytes.begin(), id_bytes.end(), id_span.begin());
         // Mark checksum as dirty since we changed the frame
@@ -53,8 +64,6 @@ namespace USBCANBridge {
         }
         // Copy data into frame storage
         std::copy(data.begin(), data.end(), frame_storage_.begin() + layout_.DATA);
-        // Update DLC accordingly
-        impl_set_dlc(dlc);
         // Mark checksum as dirty since we changed the frame
         checksum_interface_.mark_dirty();
     }

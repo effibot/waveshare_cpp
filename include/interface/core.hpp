@@ -163,33 +163,34 @@ namespace USBCANBridge {
 
             /**
              * @brief Set the Type byte of the frame.
-             * @param type The Type byte to set.
+             * @param ver The CANVersion byte to set.
+             * @param fmt The Format byte to set.
              * @note This calls derived().get_type() for frame-specific type retrieval.
              */
             template<typename T = Frame>
             std::enable_if_t<is_variable_frame_v<T>, void>
-            set_type(std::byte type) {
-                derived().impl_set_type(type);
+            set_type(CANVersion ver, Format fmt) {
+                derived().impl_set_type(ver, fmt);
             }
 
             /**
              * @brief Get the CANVersion byte of the frame.
              * This tells wether the frame uses standard or extended CAN IDs.
              * @return CANVersion The CANVersion byte of the frame.
-             * @note This calls derived().get_frame_type() for frame-specific frame type retrieval.
+             * @note This calls derived().get_can_version() for frame-specific frame type retrieval.
              */
-            CANVersion get_frame_type() const {
+            CANVersion get_CAN_vesion() const {
                 return derived().impl_get_CAN_version();
             }
 
             /**
              * @brief Set the CANVersion byte of the frame.
              * @param frame_type The CANVersion byte to set.
-             * @note This calls derived().set_frame_type() for frame-specific frame type setting.
+             * @note This calls derived().set_CAN_version() for frame-specific frame type setting.
              */
             template<typename T = Frame>
             std::enable_if_t<is_variable_frame_v<T>, void>
-            set_frame_type(CANVersion frame_type) {
+            set_CAN_version(CANVersion frame_type) {
                 derived().impl_set_CAN_version(frame_type);
             }
     };

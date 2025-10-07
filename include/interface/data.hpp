@@ -53,11 +53,45 @@ namespace USBCANBridge {
             /**
              * @brief Get the size of the id field
              * This methods use the frame layout and the current is_extended() value to determine the size of the id field.
+             * @return std::size_t The size of the id field in bytes
              */
-            const std::size_t get_id_field_size() const {
-                return this->layout_.id_size(is_extended());
+            std::size_t get_id_field_size() const {
+                if constexpr (is_fixed_frame_v<Frame>) {
+                    return layout::ID_SIZE;
+                }
+                if constexpr (is_variable_frame_v<Frame>) {
+                    return this->layout_.id_size(is_extended());
+                }
+
             }
 
+            /**
+             * @brief Get a subspan to access the CAN ID field in the internal storage.
+             * @return span<std::byte> A subspan representing the ID field
+             */
+            template<typename T = Frame>
+            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
+            get_CAN_id_span() {
+                return this->get_storage().subspan(
+                    this->layout_.ID,
+                    this->get_id_field_size()
+                );
+            }
+
+            /**
+             * @brief Get a subspan to access the CAN ID field in the internal storage.
+             * @return span<std::byte> A subspan representing the ID field
+             */
+            template<typename T = Frame>
+            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
+            get_CAN_id_span() const {
+                const storage_t<T>& frame_storage = this->get_storage();
+                const size_t id_size = this->get_id_field_size();
+                return frame_storage.subspan(
+                    this->layout_.ID,
+                    id_size
+                );
+            }
 
 
         // === Data Frame Specific Methods ===
@@ -107,7 +141,7 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, std::uint32_t>
             get_can_id() const {
-                return this->derived().impl_get_can_id();
+                return this->derived().impl_get_CAN_id();
             }
             /**
              * @brief Set the id object
@@ -119,35 +153,7 @@ namespace USBCANBridge {
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, void>
             set_id(std::uint32_t id) {
-                this->derived().impl_set_id(id);
-            }
-
-            /**
-             * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
-            get_can_id_span() {
-                return this->get_storage().subspan(
-                    this->layout_.ID,
-                    this->get_id_field_size()
-                );
-            }
-
-            /**
-             * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
-            get_can_id_span() const {
-                const storage_t<T>& frame_storage = this->get_storage();
-                const size_t id_size = this->get_id_field_size();
-                return frame_storage.subspan(
-                    this->layout_.ID,
-                    id_size
-                );
+                this->derived().impl_set_CAN_id(id);
             }
 
             /**
@@ -196,8 +202,6 @@ namespace USBCANBridge {
                 this->derived().impl_set_data(data);
                 set_dlc(data.size());
             }
-
-            
     };
 
 }

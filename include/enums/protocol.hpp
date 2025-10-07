@@ -361,6 +361,16 @@ namespace USBCANBridge {
         }
         return bytes;
     }
+    template<typename T>
+    constexpr std::array<std::byte, sizeof(T)> int_to_bytes_le(T value) {
+        static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
+        std::array<std::byte, sizeof(T)> bytes = {};
+        for (std::size_t i = 0; i < sizeof(T); ++i) {
+            bytes[i] = static_cast<std::byte>(value & 0xFF);
+            value >>= 8;
+        }
+        return bytes;
+    }
     /**
      * @brief Converts a little-endian byte array to an unsigned integer.
      * This function converts a std::array of std::byte representing a little-endian byte sequence
@@ -384,89 +394,6 @@ namespace USBCANBridge {
         return value;
     }
 
-    // === Protocol Static Utiliy Functions ===
-    /**
-     * @brief Extract the Type base byte from a Type byte.
-     * The Type base is a couple of bits that identify the frame as
-     * a variable-length frame for the Waveshare USB-CAN adapter protocol.
-     * @note The extraction is performed by masking out all but the two highest bits.
-     * @param type The Type byte to extract from.
-     * @return The extracted Type base byte.
-     */
-    constexpr Type extract_type_base(std::byte type) {
-        return static_cast<Type>(
-            static_cast<std::uint8_t>(type) & 0xC0);
-    }
-    /**
-     * @brief Extract the CANVersion from a Type byte.
-     * The CANVersion is a single bit that indicates whether the frame is
-     * standard (STD) or extended (EXT).
-     * @note The extraction is performed by right-shifting to select the fifth bit
-     * and masking out all other bits.
-     * @param type The Type byte to extract from.
-     * @return The extracted CANVersion.
-     */
-    constexpr CANVersion extract_frame_type(std::byte type) {
-        return static_cast<CANVersion>(
-            (static_cast<std::uint8_t>(type) >> 5) & 1);
-    }
-    /**
-     * @brief Extract the Format from a Type byte.
-     * The Format is a single bit that indicates whether the frame is
-     * a data frame or a remote frame.
-     * @note The extraction is performed by right-shifting to select the fourth bit
-     * and masking out all other bits.
-     * @param type The Type byte to extract from.
-     * @return The extracted Format.
-     */
-    constexpr Format extract_frame_format(std::byte type) {
-        return static_cast<Format>(
-            (static_cast<std::uint8_t>(type) >> 4) & 1);
-    }
-    /**
-     * @brief Extract the DLC from a Type byte.
-     * The DLC (Data Length Code) is represented by the lowest four bits of the Type byte,
-     * which indicates the number of data bytes in the frame.
-     * @note The extraction is performed by masking out all but the four lowest bits using a
-     * bitwise AND operation with `0x0F` (`0b1111`).
-     * @param type The Type byte to extract from.
-     * @return The extracted DLC (0-8).
-     */
-    constexpr std::size_t extract_dlc(std::byte type) {
-        return static_cast<std::size_t>(static_cast<std::uint8_t>(type) & 0x0F);
-    }
-    /**
-     * @brief Calculate the Type byte for a VariableFrame based on its properties.
-     * This function determines the appropriate Type byte for a VariableFrame
-     * based on the frame's CANVersion, Format, and data length code (DLC).
-     * @param frame_type The CANVersion of the VariableFrame
-     * @param frame_fmt The Format of the VariableFrame
-     * @param dlc The data length code (DLC) of the VariableFrame
-     * @note The Type byte is constructed as follows:
-     *
-     * - Bits 7-6: Type base byte (0xC0 for VariableFrame)
-     *
-     * - Bit 5: CANVersion (0 for STD, 1 for EXT)
-     *
-     * - Bit 4: Format (0 for DATA, 1 for REMOTE)
-     *
-     * - Bits 3-0: DLC (0-8)
-     *
-     * @see extract_type_base, extract_frame_type, extract_frame_format,
-       extract_dlc to know the reason behind each bit manipulation.
-     * @warning We assume that the caller has already validated each parameter.
-     * @return The calculated Type byte for the VariableFrame
-     */
-    template<typename T>
-    constexpr std::enable_if_t<is_variable_frame_v<T>, std::byte>
-    compute_type(CANVersion frame_type, Format frame_fmt, std::size_t dlc) {
-        // Combine all bit operations into a single expression
-        return static_cast<std::byte>(
-            static_cast<std::uint8_t>(Type::DATA_VARIABLE) |
-            (static_cast<std::uint8_t>(frame_type) << 5) |
-            (static_cast<std::uint8_t>(frame_fmt) << 4) |
-            (static_cast<std::uint8_t>(dlc) & 0x0F)
-        );
-    }
+
 
 }     // namespace USBCANBridge
