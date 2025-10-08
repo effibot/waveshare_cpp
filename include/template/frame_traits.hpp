@@ -106,6 +106,7 @@ namespace USBCANBridge {
         static constexpr std::size_t FRAME_SIZE = 20;
         alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
         using StorageType = span<std::byte, FRAME_SIZE>;
+        static constexpr std::size_t MAX_DATA_SIZE = 8;
 
 
         /**
@@ -115,7 +116,7 @@ namespace USBCANBridge {
             static constexpr std::size_t START = 0;
             static constexpr std::size_t HEADER = 1;
             static constexpr std::size_t TYPE = 2;
-            static constexpr std::size_t CANVERS = 3;
+            static constexpr std::size_t CAN_VERS = 3;
             static constexpr std::size_t FORMAT = 4;
             static constexpr std::size_t ID = 5;
             static constexpr std::size_t ID_SIZE = 4;
@@ -223,7 +224,7 @@ namespace USBCANBridge {
             static constexpr std::size_t HEADER = 1;
             static constexpr std::size_t TYPE = 2;
             static constexpr std::size_t BAUD = 3;
-            static constexpr std::size_t CANVERS = 4;
+            static constexpr std::size_t CAN_VERS = 4;
             static constexpr std::size_t FILTER = 5;
             static constexpr std::size_t FILTER_SIZE = 4;
             static constexpr std::size_t MASK = 9;

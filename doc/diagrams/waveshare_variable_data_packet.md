@@ -1,13 +1,8 @@
----
-title: "Waveshare USB-CAN Variable-Size Data Packet"    
----
-packet
-0: "SOT" %% Start Of Transmission [0xAA]
+```mermaid
+packet-beta
+0: "S" %% Start Of Transmission [0xAA]
 1: "T" %% Type 
 2-5: "ID" %% Identifier
 6-13: "DATA" %% Data Bytes (0-8 bytes)
 14: "END" %% End Of Transmission [0x55]
-
-
-
-
+```

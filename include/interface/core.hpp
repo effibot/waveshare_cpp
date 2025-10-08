@@ -193,6 +193,19 @@ namespace USBCANBridge {
             set_CAN_version(CANVersion frame_type) {
                 derived().impl_set_CAN_version(frame_type);
             }
+
+            // === Finalization Methods ===
+            /**
+             * @brief Finalize the frame after modifications.
+             *
+             * This method is called to perform any final checks or adjustments
+             * before the frame is sent or processed, assuring that is in a valid state.
+             * @note Fixed and Config frames will recalculate the checksum if needed. Variable frames will update the Type field with the cached values.
+             */
+            void finalize() {
+                this->derived().impl_finalize();
+                return;
+            }
     };
 }
 

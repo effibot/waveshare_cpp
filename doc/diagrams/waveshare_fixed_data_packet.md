@@ -1,8 +1,6 @@
----
-title: "Waveshare USB-CAN Fixed-Size Data Packet"    
----
-packet
-0: "SOT" %% Start Of Transmission [0xAA]
+```mermaid
+packet-beta
+0: "S" %% Start Of Transmission [0xAA]
 1: "H" %% Header [0x55]
 2: "T" %% Type 
 3: "E" %% IsExtended
@@ -12,5 +10,4 @@ packet
 10-17: "DATA" %% Data Bytes
 18: "R" %% Reserved
 19: "CHK" %% Checksum
-
-
+```

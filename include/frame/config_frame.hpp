@@ -36,13 +36,34 @@ namespace USBCANBridge {
         public ConfigInterface<ConfigFrame> {
 
         private:
+            // * Internal state variables (if any)
+            Type init_type_;
+            std::array<std::byte, 4> init_filter_;
+            std::array<std::byte, 4> init_mask_;
+            RTX init_auto_rtx_;
+            CANBaud init_baud_;
+            CANMode init_mode_;
             // * Composition with ChecksumInterface
             ChecksumInterface<ConfigFrame> checksum_interface_;
 
         public:
             // * Constructors
-            ConfigFrame() : ConfigInterface<ConfigFrame>(), checksum_interface_(*this) {
-
+            ConfigFrame(
+                Type type = DEFAULT_CONF_TYPE,
+                std::array<std::byte, 4> filter = {},
+                std::array<std::byte, 4> mask = {},
+                RTX auto_rtx = RTX::AUTO,
+                CANBaud baud = CANBaud::BAUD_1M,
+                CANMode mode = CANMode::NORMAL
+            ) : ConfigInterface<ConfigFrame>(),
+                init_type_(type),
+                init_filter_(filter),
+                init_mask_(mask),
+                init_auto_rtx_(auto_rtx),
+                init_baud_(baud),
+                init_mode_(mode),
+                checksum_interface_(*this) {
+                // * The base constructor will call impl_init_fields(), here defined.
             }
 
             // === Core impl_*() Methods ===
@@ -71,15 +92,17 @@ namespace USBCANBridge {
                 // * Set the Header byte
                 frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
                 // * Set the Type byte
-                frame_storage_[layout_.TYPE] = to_byte(DEFAULT_CONF_TYPE);
+                frame_storage_[layout_.TYPE] = to_byte(init_type_);
                 // * Initialize other fields to zero
-                frame_storage_[layout_.BAUD] = to_byte(CANBaud::BAUD_1M);
-                frame_storage_[layout_.MODE] = to_byte(CANMode::NORMAL);
+                frame_storage_[layout_.BAUD] = to_byte(init_baud_);
+                frame_storage_[layout_.MODE] = to_byte(init_mode_);
                 for (size_t i = 0; i < 4; ++i) {
-                    frame_storage_[layout_.FILTER + i] = to_byte(Constants::RESERVED);
-                    frame_storage_[layout_.MASK + i] = to_byte(Constants::RESERVED);
+                    frame_storage_[layout_.FILTER + i] = to_byte(init_filter_[i]);
+                    frame_storage_[layout_.MASK + i] = to_byte(init_mask_[i]);
                     frame_storage_[layout_.RESERVED + i] = to_byte(Constants::RESERVED);
                 }
+                // * Set the Auto Retransmission byte
+                frame_storage_[layout_.AUTO_RTX] = to_byte(init_auto_rtx_);
                 // Mark checksum as dirty since we changed the frame
                 checksum_interface_.mark_dirty();
             }
@@ -125,9 +148,39 @@ namespace USBCANBridge {
             }
 
             // === ConfigFrame impl_*() Methods ===
+            /**
+             * @brief Get the type of the frame.
+             *
+             * @return Type The type of the frame.
+             */
             Type impl_get_type() const;
+            /**
+             * @brief Set the type of the frame.
+             *
+             * @param type The type to set.
+             */
             void impl_set_type(Type type);
+            /**
+             * @brief Get the CAN version of the frame.
+             *
+             * @return CANVersion The CAN version of the frame.
+             */
             CANVersion impl_get_CAN_version() const;
+            /**
+             * @brief Set the CAN version of the frame.
+             *
+             * @param type The CAN version to set.
+             */
             void impl_set_CAN_version(CANVersion type);
+
+            // === Finalization ===
+            /**
+             * @brief Finalize the frame before transmission.
+             * This method ensures the frame is ready to be sent, including checksum calculation.
+             * @note This calls ChecksumInterface::finalize() to compute and set the checksum.
+             */
+            void finalize() {
+                checksum_interface_.update_checksum();
+            }
     };
 }

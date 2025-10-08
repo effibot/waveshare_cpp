@@ -84,11 +84,10 @@ namespace USBCANBridge {
      * - EXT_FIXED: Extended ID (29-bit) with fixed frame structure
      *
      * - EXT_VARIABLE: Extended ID (29-bit) with variable frame structure
-     * <<< Recommended: STD_VARIABLE >>>
      */
     enum class CANVersion : std::uint8_t {
         STD_FIXED = 0x01,
-        STD_VARIABLE = 0,
+        STD_VARIABLE = 0,   // <<< Recommended
         EXT_FIXED = 0x02,
         EXT_VARIABLE = 1
     };

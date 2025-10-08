@@ -34,6 +34,8 @@ namespace USBCANBridge {
             Format current_format_;
             CANVersion current_version_;
             std::size_t current_dlc_ = 0; // Data Length Code (0-8)
+            std::vector<std::byte> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
+            std::vector<std::byte> init_data; // Initial data bytes (0-8 bytes)
             // * Helper interface for Type field manipulation
             VarTypeInterface<VariableFrame> var_type_interface_;
 
@@ -86,11 +88,22 @@ namespace USBCANBridge {
             }
         public:
             // * Constructors
-            VariableFrame() : DataInterface<VariableFrame>(),
-                current_format_(Format::DATA_VARIABLE),
-                current_version_(CANVersion::STD_VARIABLE),
+            VariableFrame(Format fmt = Format::DATA_VARIABLE,
+                CANVersion ver = CANVersion::STD_VARIABLE,
+                std::vector<std::byte> init_id = {},
+                size_t payload_size = 0,
+                std::vector<std::byte> init_data = {}) : DataInterface<VariableFrame>(),
+                current_format_(fmt),
+                current_version_(ver),
+                current_dlc_(payload_size),
+                init_id(std::move(init_id)),
+                init_data(std::move(init_data)),
                 var_type_interface_(*this) {
                 // * The base constructor will call impl_init_fields(), here defined.
+            }
+
+            VariableFrame() : VariableFrame(Format::DATA_VARIABLE,
+                    CANVersion::STD_VARIABLE, {}, 0, {}) {
             }
 
             // === Core impl_*() Methods ===
@@ -108,10 +121,52 @@ namespace USBCANBridge {
              * - `[END]` = `Constants::END_BYTE`
              */
             void impl_init_fields() {
+                bool must_resize = false;
+                std::size_t new_size = traits_.MIN_FRAME_SIZE; // Minimum size (5 bytes)
+                // # if we have Extended ID, resize the buffer during allocation, since only the START byte has been set so far
+                if (current_version_ == CANVersion::EXT_VARIABLE) {
+                    // resize the buffer to 6 bytes (START, TYPE, ID0, ID1, ID2, ID3, END)
+                    new_size += 2; // +2 bytes for extended ID
+                    must_resize = true;
+                }
+                // # if we already know the payload size, resize the buffer during allocation
+                if (current_dlc_ > 0) {
+                    if (current_dlc_ > traits_.MAX_DATA_SIZE) {
+                        throw std::out_of_range("Payload size exceeds maximum for VariableFrame");
+                    }
+                    // Resize the buffer to accommodate the payload
+                    new_size += current_dlc_; // +N bytes for data payload
+                    must_resize = true;
+                }
+                if (must_resize) {
+                    traits_.frame_buffer.resize(new_size);
+                    frame_storage_ = span<std::byte>(traits_.frame_buffer.data(), new_size);
+                }
                 // * Set the Type byte
                 frame_storage_[layout_.TYPE] = to_byte(Type::DATA_VARIABLE);
                 // * Set the END byte
-                frame_storage_[layout_.end(false, 0) - 1] = to_byte(Constants::END_BYTE);
+                frame_storage_[layout_.end(impl_is_extended(),
+                    0) - 1] = to_byte(Constants::END_BYTE);
+                // * If we have an initial ID, set it
+                if (!init_id.empty()) {
+                    auto id_span = this->get_storage().subspan(
+                        layout_.ID, init_id.size());
+                    std::copy(init_id.begin(), init_id.end(), id_span.begin());
+                }
+                // * If we have an initial data payload, set it
+                if (!init_data.empty()) {
+                    if (init_data.size() > traits_.MAX_DATA_SIZE ||
+                        init_data.size() != current_dlc_) { // <<< check that the user provided a consistent DLC
+                        throw std::out_of_range(
+                            "Initial data size exceeds maximum for VariableFrame");
+                    }
+                    auto data_span = this->get_storage().subspan(
+                        layout_.data(impl_is_extended()), init_data.size());
+                    std::copy(init_data.begin(), init_data.end(), data_span.begin());
+
+
+                }
+
                 // * Mark the Type field as dirty to ensure it's computed before sending
                 var_type_interface_.mark_dirty();
                 return;
@@ -168,6 +223,13 @@ namespace USBCANBridge {
              */
             void impl_set_type(CANVersion ver, Format fmt);
 
+            void impl_finalize() {
+                // Ensure the Type field is up to date
+                var_type_interface_.update_type(
+                    current_version_, current_format_, current_dlc_
+                );
+                return;
+            }
 
             // === DataFrame impl_*() Methods ===
             /**

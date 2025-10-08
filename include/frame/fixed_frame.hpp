@@ -36,12 +36,29 @@ namespace USBCANBridge {
     class FixedFrame :
         public DataInterface<FixedFrame> {
         private:
+            // * Internal state variables
+            Format current_format_;
+            CANVersion current_version_;
+            std::size_t current_dlc_ = 0; // Data Length Code (0-8)
+            std::array<std::byte, 4> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
+            std::array<std::byte, 8> init_data; // Initial data bytes (0-8 bytes)
             // * Composition with ChecksumInterface
             ChecksumInterface<FixedFrame> checksum_interface_;
 
         public:
             // * Constructors
-            FixedFrame() : DataInterface<FixedFrame>(), checksum_interface_(*this) {
+            FixedFrame() : FixedFrame(Format::DATA_FIXED, CANVersion::STD_FIXED, {}, 0, {}) {
+            }
+            FixedFrame(Format fmt, CANVersion ver, std::array<std::byte, 4> init_id = {},
+                std::size_t init_dlc = 0,
+                std::array<std::byte, 8> init_data = {}) : DataInterface<FixedFrame>(),
+                current_format_(fmt),
+                current_version_(ver),
+                current_dlc_(init_dlc),
+                init_id(init_id),
+                init_data(init_data),
+                checksum_interface_(*this) {
+
             }
 
             // === Core impl_*() Methods ===
@@ -73,11 +90,27 @@ namespace USBCANBridge {
                 // * Set the Type byte
                 frame_storage_[layout_.TYPE] = to_byte(Type::DATA_FIXED);
                 // * Set the Frame Type byte
-                frame_storage_[layout_.CANVERS] = to_byte(CANVersion::STD_FIXED);
+                frame_storage_[layout_.CAN_VERS] = to_byte(CANVersion::STD_FIXED);
                 // * Set the Frame Format byte
                 frame_storage_[layout_.FORMAT] = to_byte(Format::DATA_FIXED);
                 // * Set the Reserved byte
                 frame_storage_[layout_.RESERVED] = to_byte(Constants::RESERVED);
+                // # if we have an initial ID, set it
+                if (!init_id.empty()) {
+                    std::copy(init_id.begin(), init_id.end(), frame_storage_.begin() + layout_.ID);
+                }
+                // # if we have an initial data payload, set it
+                if (!init_data.empty()) {
+                    std::copy(init_data.begin(), init_data.end(),
+                        frame_storage_.begin() + layout_.DATA);
+                    // Set the DLC accordingly
+                    current_dlc_ = std::min(init_data.size(), static_cast<std::size_t>(8));
+                    frame_storage_[layout_.DLC] = static_cast<std::byte>(current_dlc_);
+                } else {
+                    // Ensure DLC is zero if no data
+                    current_dlc_ = 0;
+                    frame_storage_[layout_.DLC] = static_cast<std::byte>(0);
+                }
                 // Mark checksum as dirty since we changed the frame
                 checksum_interface_.mark_dirty();
             }
@@ -107,7 +140,15 @@ namespace USBCANBridge {
                 // Mark checksum as dirty since we changed the frame
                 checksum_interface_.mark_dirty();
             }
-
+            // === Finalization ===
+            /**
+             * @brief Finalize the frame before transmission.
+             * This method ensures the frame is ready to be sent, including checksum calculation.
+             * @note This calls ChecksumInterface::finalize() to compute and set the checksum.
+             */
+            void finalize() {
+                checksum_interface_.update_checksum();
+            }
             // === DataFrame impl_*() Methods ===
             /**
              * @brief Get the version of the CAN ID (standard/extended).
@@ -176,4 +217,4 @@ namespace USBCANBridge {
             void impl_set_dlc(std::size_t dlc);
 
     };
-}
+} // namespace USBCANBridge
