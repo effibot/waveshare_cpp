@@ -90,12 +90,17 @@ namespace USBCANBridge {
         var_type_interface_.mark_dirty();
     }
 
-    span<const std::byte> VariableFrame::impl_get_data() const {
+    span<const std::uint8_t> VariableFrame::impl_get_data() const {
         std::size_t dlc = impl_get_dlc();
         return frame_storage_.subspan(layout_.data(impl_is_extended()), dlc);
     }
 
-    void VariableFrame::impl_set_data(span<const std::byte> data) {
+    span<std::uint8_t> VariableFrame::impl_get_data() {
+        std::size_t dlc = impl_get_dlc();
+        return frame_storage_.subspan(layout_.data(impl_is_extended()), dlc);
+    }
+
+    void VariableFrame::impl_set_data(span<const std::uint8_t> data) {
         std::size_t dlc = data.size();
         if (dlc > traits_.MAX_DATA_SIZE) {
             throw std::out_of_range("Data size exceeds maximum for VariableFrame");

@@ -17,15 +17,16 @@ namespace USBCANBridge {
      * @see File: include/protocol.hpp for constant definitions.
      * @note The frame structure is defined as follows:
      * ```
-     * [START][HEADER][TYPE][CAN_BAUD][FRAME_TYPE][FILTER_ID0-3][MASK_ID0-3][CAN_MODE][AUTO_RTX][RESERVED0-3][CHECKSUM]
+     * [START][HEADER][TYPE][CAN_BAUD][CAN_VERS][FILTER_ID0-3][MASK_ID0-3][CAN_MODE][AUTO_RTX][RESERVED0-3][CHECKSUM]
      * ```
      * - `START` (1 byte): Start byte, always `0xAA`
      * - `HEADER` (1 byte): Header byte, always `0x55`
      * - `TYPE` (1 byte): Frame type, always `0x02`
      * - `CAN_BAUD` (1 byte): CAN baud rate
-     * - `CAN_MODE` (1 byte): CAN mode
+     * - `CAN_VERS` (1 byte): CAN version
      * - `FILTER` (4 bytes): Acceptance filter, big-endian
      * - `MASK` (4 bytes): Acceptance mask, big-endian
+     * - `CAN_MODE` (1 byte): CAN mode
      * - `AUTO_RTX` (1 byte): Auto retransmission setting
      * - `RESERVED` (4 bytes): Reserved bytes, always `0x00`
      * - `CHECKSUM` (1 byte): Checksum byte, computed over bytes 2 to 14
@@ -36,13 +37,6 @@ namespace USBCANBridge {
         public ConfigInterface<ConfigFrame> {
 
         private:
-            // * Internal state variables (if any)
-            Type init_type_;
-            std::array<std::byte, 4> init_filter_;
-            std::array<std::byte, 4> init_mask_;
-            RTX init_auto_rtx_;
-            CANBaud init_baud_;
-            CANMode init_mode_;
             // * Composition with ChecksumInterface
             ChecksumInterface<ConfigFrame> checksum_interface_;
 
@@ -50,20 +44,36 @@ namespace USBCANBridge {
             // * Constructors
             ConfigFrame(
                 Type type = DEFAULT_CONF_TYPE,
-                std::array<std::byte, 4> filter = {},
-                std::array<std::byte, 4> mask = {},
+                std::array<std::uint8_t, 4> filter = {},
+                std::array<std::uint8_t, 4> mask = {},
                 RTX auto_rtx = RTX::AUTO,
                 CANBaud baud = CANBaud::BAUD_1M,
-                CANMode mode = CANMode::NORMAL
+                CANMode mode = CANMode::NORMAL,
+                CANVersion can_vers = CANVersion::STD_FIXED
             ) : ConfigInterface<ConfigFrame>(),
-                init_type_(type),
-                init_filter_(filter),
-                init_mask_(mask),
-                init_auto_rtx_(auto_rtx),
-                init_baud_(baud),
-                init_mode_(mode),
                 checksum_interface_(*this) {
-                // * The base constructor will call impl_init_fields(), here defined.
+                // Base constructor has initialized frame with zeros and START byte
+                // Now set the specific configuration values
+
+                // Set Header and Type
+                frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
+                frame_storage_[layout_.TYPE] = to_byte(type);
+
+                // Set configuration parameters
+                frame_storage_[layout_.CAN_VERS] = to_byte(can_vers);
+                frame_storage_[layout_.BAUD] = to_byte(baud);
+                frame_storage_[layout_.MODE] = to_byte(mode);
+                frame_storage_[layout_.AUTO_RTX] = to_byte(auto_rtx);
+
+                // Set filter and mask
+                for (size_t i = 0; i < 4; ++i) {
+                    frame_storage_[layout_.FILTER + i] = filter[i];
+                    frame_storage_[layout_.MASK + i] = mask[i];
+                    frame_storage_[layout_.RESERVED + i] = to_byte(Constants::RESERVED);
+                }
+
+                // Mark checksum as dirty
+                checksum_interface_.mark_dirty();
             }
 
             // === Core impl_*() Methods ===
@@ -75,35 +85,22 @@ namespace USBCANBridge {
              *
              * @see File: README.md for frame structure details.
              *
-             * @note For a ConfigFrame, the following fields are initialized:
-             * ```
-             * [START][HEADER][TYPE][BAUD][MODE][FILTER1][FILTER2][FILTER3][FILTER4][MASK1][MASK2][MASK3][MASK4][RESERVED1][RESERVED2]
-             * ```
-             * - `START` (1 byte): Start byte, always `0xAA` (already set in CoreInterface)
-             * - `HEADER` (1 byte): Header byte, always `0x55`
-             * - `TYPE` (1 byte): Frame type, always `0x02`
-             * - `BAUD` (1 byte): CAN baud rate
-             * - `MODE` (1 byte): CAN mode
-             * - `FILTER` (4 bytes): Acceptance filter, big-endian
-             * - `MASK` (4 bytes): Acceptance mask, big-endian
-             * - `RESERVED` (4 bytes): Reserved bytes, always `0x00`
+             * @note For a ConfigFrame, the following constant fields are initialized:
+             * - `START` (1 byte): Start byte, always `0xAA` (set in CoreInterface)
+             * - All other fields are set to zero by CoreInterface
+             * - ConfigFrame constructor will set the specific values after base initialization
              */
             void impl_init_fields() {
-                // * Set the Header byte
-                frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
-                // * Set the Type byte
-                frame_storage_[layout_.TYPE] = to_byte(init_type_);
-                // * Initialize other fields to zero
-                frame_storage_[layout_.BAUD] = to_byte(init_baud_);
-                frame_storage_[layout_.MODE] = to_byte(init_mode_);
-                for (size_t i = 0; i < 4; ++i) {
-                    frame_storage_[layout_.FILTER + i] = to_byte(init_filter_[i]);
-                    frame_storage_[layout_.MASK + i] = to_byte(init_mask_[i]);
-                    frame_storage_[layout_.RESERVED + i] = to_byte(Constants::RESERVED);
-                }
-                // * Set the Auto Retransmission byte
-                frame_storage_[layout_.AUTO_RTX] = to_byte(init_auto_rtx_);
-                // Mark checksum as dirty since we changed the frame
+                // CoreInterface has already zeroed the buffer and set START byte
+                // The ConfigFrame constructor will set the actual configuration values
+                // This method doesn't need to do anything for ConfigFrame
+            }
+
+            /**
+             * @brief Utility to expose and set the dirty bit for checksum management.
+             *
+             */
+            void mark_dirty() {
                 checksum_interface_.mark_dirty();
             }
 
@@ -171,7 +168,7 @@ namespace USBCANBridge {
              *
              * @param type The CAN version to set.
              */
-            void impl_set_CAN_version(CANVersion type);
+            void impl_set_CAN_version(CANVersion ver);
 
             // === Finalization ===
             /**

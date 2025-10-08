@@ -65,7 +65,7 @@ The most important values are the following:
 
     Where `Type` is a constant value of `0xC0` (binary `11000000`), the `IsExtended` bit indicates if the ID is 11 or 29 bits long, the `Format` bit indicates if the frame is a data or remote frame, and the `DLC` (Data Length Code) indicates the number of data bytes in the frame (from 0 to 8).
 
-    > Using a `uint8_t` (or `std::byte`) to represent the `Type` byte allows to easily extract the individual fields using bitwise operations.
+    > Using a `uint8_t` to represent the `Type` byte allows to easily extract the individual fields using bitwise operations.
 
     For example, starting with `0xC0` to sets the two most significant bits to `11`, one can do the following:
 ```cpp

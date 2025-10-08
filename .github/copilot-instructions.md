@@ -49,7 +49,7 @@ Frame-specific logic lives in `impl_*()` methods called by base interfaces via C
 
 #### FrameTraits System
 `include/template/frame_traits.hpp` provides compile-time frame metadata:
-- **StorageType**: `std::array<std::byte, 20>` (fixed) or `boost::span<std::byte>` (variable)
+- **StorageType**: `std::array<std::uint8_t, 20>` (fixed) or `boost::span<std::uint8_t>` (variable)
 - **Layout**: Nested struct with byte offsets (e.g., `layout_.ID`, `layout_.CHECKSUM`)
 - **Type predicates**: `is_data_frame_v<T>`, `is_config_frame_v<T>`, `has_checksum_v<T>`
 
@@ -84,7 +84,7 @@ auto frame = FrameBuilder<FixedFrame>()
     .with_can_version(CANVersion::STD_FIXED)
     .with_format(Format::DATA_FIXED)
     .with_id(0x123)
-    .with_data({std::byte(0x01), std::byte(0x02)})
+    .with_data({0x01, 0x02})
     .finalize()
     .build();
 ```
@@ -118,7 +118,7 @@ Return `Result<bool>` with specific `Status` errors.
 ### Namespace & Dependencies
 - All code in `namespace USBCANBridge`
 - Uses `boost::span` for view semantics (aliased via `using namespace boost`)
-- C++17 minimum (uses `std::byte`, `if constexpr`, `std::optional`)
+- C++17 minimum (uses `std::uint8_t` for byte storage, `if constexpr`, `std::optional`)
 
 ## Code Formatting
 - Uncrustify config in `uncrustify.cfg` (4-space indentation, K&R-like style)

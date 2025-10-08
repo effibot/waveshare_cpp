@@ -47,7 +47,7 @@ namespace USBCANBridge {
              * @return The computed checksum value
              * @throws std::runtime_error if data size is insufficient
              */
-            static std::byte compute_checksum_impl(const storage_t<Frame> data) {
+            static std::uint8_t compute_checksum_impl(const storage_t<Frame> data) {
 
                 if (data.size() <= CHECKSUM_END) {
                     throw std::runtime_error("Checksum calculation: invalid data length");
@@ -56,10 +56,10 @@ namespace USBCANBridge {
                 uint16_t sum = std::accumulate(data.begin() + CHECKSUM_START,
                     data.begin() + CHECKSUM_END,
                     uint16_t(0),
-                    [](uint16_t acc, std::byte b) {
+                    [](uint16_t acc, std::uint8_t b) {
                         return acc + static_cast<uint8_t>(b);
                     });
-                return static_cast<std::byte>(sum & 0xFF);
+                return static_cast<std::uint8_t>(sum & 0xFF);
             }
 
             /**
@@ -74,8 +74,8 @@ namespace USBCANBridge {
                     throw std::runtime_error("Checksum verification: invalid data length");
                 }
 
-                std::byte stored_checksum = data[CHECKSUM];
-                std::byte computed_checksum = compute_checksum_impl(data);
+                std::uint8_t stored_checksum = data[CHECKSUM];
+                std::uint8_t computed_checksum = compute_checksum_impl(data);
 
                 return stored_checksum == computed_checksum;
             }
@@ -91,7 +91,7 @@ namespace USBCANBridge {
                     throw std::runtime_error("Checksum update: invalid data length");
                 }
 
-                std::byte computed_checksum = compute_checksum_impl(data);
+                std::uint8_t computed_checksum = compute_checksum_impl(data);
                 data[CHECKSUM] = computed_checksum;
             }
 
@@ -133,7 +133,7 @@ namespace USBCANBridge {
              * @return The computed checksum value.
              */
             template<typename T = Frame>
-            std::enable_if_t<has_checksum_v<T>, std::byte>
+            std::enable_if_t<has_checksum_v<T>, std::uint8_t>
             compute_checksum() const {
                 const storage_t<Frame>& raw_data = this->get_frame().get_storage();
 
@@ -146,7 +146,7 @@ namespace USBCANBridge {
              * @return The computed checksum value
              */
             template<typename T = Frame>
-            static std::enable_if_t<has_checksum_v<T>, std::byte>
+            static std::enable_if_t<has_checksum_v<T>, std::uint8_t>
             compute_checksum(const storage_t<Frame> data) {
                 // Use Frame's traits for offset information
                 return compute_checksum_impl(data);

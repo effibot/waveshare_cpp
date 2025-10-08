@@ -67,7 +67,7 @@ namespace USBCANBridge {
              */
             void init_fields() {
                 // Initialize the frame storage with default values
-                std::fill(std::begin(frame_storage_), std::end(frame_storage_), std::byte(0x00));
+                std::fill(std::begin(frame_storage_), std::end(frame_storage_), std::uint8_t(0x00));
                 // Set the Start byte
                 frame_storage_[layout_.START] = to_byte(Constants::START_BYTE);
                 // Call derived class to initialize fixed fields
@@ -179,7 +179,7 @@ namespace USBCANBridge {
              * @return CANVersion The CANVersion byte of the frame.
              * @note This calls derived().get_can_version() for frame-specific frame type retrieval.
              */
-            CANVersion get_CAN_vesion() const {
+            CANVersion get_CAN_version() const {
                 return derived().impl_get_CAN_version();
             }
 
@@ -188,9 +188,8 @@ namespace USBCANBridge {
              * @param frame_type The CANVersion byte to set.
              * @note This calls derived().set_CAN_version() for frame-specific frame type setting.
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_variable_frame_v<T>, void>
-            set_CAN_version(CANVersion frame_type) {
+
+            void set_CAN_version(CANVersion frame_type) {
                 derived().impl_set_CAN_version(frame_type);
             }
 

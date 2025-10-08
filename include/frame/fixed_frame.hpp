@@ -40,8 +40,8 @@ namespace USBCANBridge {
             Format current_format_;
             CANVersion current_version_;
             std::size_t current_dlc_ = 0; // Data Length Code (0-8)
-            std::array<std::byte, 4> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
-            std::array<std::byte, 8> init_data; // Initial data bytes (0-8 bytes)
+            std::array<std::uint8_t, 4> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
+            std::array<std::uint8_t, 8> init_data; // Initial data bytes (0-8 bytes)
             // * Composition with ChecksumInterface
             ChecksumInterface<FixedFrame> checksum_interface_;
 
@@ -49,16 +49,37 @@ namespace USBCANBridge {
             // * Constructors
             FixedFrame() : FixedFrame(Format::DATA_FIXED, CANVersion::STD_FIXED, {}, 0, {}) {
             }
-            FixedFrame(Format fmt, CANVersion ver, std::array<std::byte, 4> init_id = {},
-                std::size_t init_dlc = 0,
-                std::array<std::byte, 8> init_data = {}) : DataInterface<FixedFrame>(),
+            FixedFrame(Format fmt, CANVersion ver, std::array<std::uint8_t, 4> init_id_param = {},
+                std::size_t init_dlc_param = 0,
+                std::array<std::uint8_t, 8> init_data_param = {}) : DataInterface<FixedFrame>(),
                 current_format_(fmt),
                 current_version_(ver),
-                current_dlc_(init_dlc),
-                init_id(init_id),
-                init_data(init_data),
+                current_dlc_(init_dlc_param),
+                init_id(init_id_param),
+                init_data(init_data_param),
                 checksum_interface_(*this) {
+                // After base initialization, set fields that depend on constructor parameters
+                // Set CAN_VERS and FORMAT from parameters (not hardcoded)
+                frame_storage_[layout_.CAN_VERS] = to_byte(ver);
+                frame_storage_[layout_.FORMAT] = to_byte(fmt);
 
+                // Set ID if provided
+                if (!init_id_param.empty() && init_id_param != std::array<std::uint8_t, 4>{}) {
+                    std::copy(init_id_param.begin(), init_id_param.end(),
+                        frame_storage_.begin() + layout_.ID);
+                }
+
+                // Set data if provided
+                if (!init_data_param.empty() && init_data_param != std::array<std::uint8_t, 8>{}) {
+                    std::copy(init_data_param.begin(), init_data_param.end(),
+                        frame_storage_.begin() + layout_.DATA);
+                    // Set the DLC accordingly
+                    current_dlc_ = std::min(init_data_param.size(), static_cast<std::size_t>(8));
+                    frame_storage_[layout_.DLC] = static_cast<std::uint8_t>(current_dlc_);
+                }
+
+                // Mark checksum as dirty
+                checksum_interface_.mark_dirty();
             }
 
             // === Core impl_*() Methods ===
@@ -85,34 +106,13 @@ namespace USBCANBridge {
              * - `[RESERVED]` = `Constants::RESERVED`
              */
             void impl_init_fields() {
-                // * Set the Header byte
+                // * Set default constant fields
                 frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
-                // * Set the Type byte
                 frame_storage_[layout_.TYPE] = to_byte(Type::DATA_FIXED);
-                // * Set the Frame Type byte
                 frame_storage_[layout_.CAN_VERS] = to_byte(CANVersion::STD_FIXED);
-                // * Set the Frame Format byte
                 frame_storage_[layout_.FORMAT] = to_byte(Format::DATA_FIXED);
-                // * Set the Reserved byte
                 frame_storage_[layout_.RESERVED] = to_byte(Constants::RESERVED);
-                // # if we have an initial ID, set it
-                if (!init_id.empty()) {
-                    std::copy(init_id.begin(), init_id.end(), frame_storage_.begin() + layout_.ID);
-                }
-                // # if we have an initial data payload, set it
-                if (!init_data.empty()) {
-                    std::copy(init_data.begin(), init_data.end(),
-                        frame_storage_.begin() + layout_.DATA);
-                    // Set the DLC accordingly
-                    current_dlc_ = std::min(init_data.size(), static_cast<std::size_t>(8));
-                    frame_storage_[layout_.DLC] = static_cast<std::byte>(current_dlc_);
-                } else {
-                    // Ensure DLC is zero if no data
-                    current_dlc_ = 0;
-                    frame_storage_[layout_.DLC] = static_cast<std::byte>(0);
-                }
-                // Mark checksum as dirty since we changed the frame
-                checksum_interface_.mark_dirty();
+                frame_storage_[layout_.DLC] = 0;  // Default DLC to 0
             }
 
             /**
@@ -125,9 +125,9 @@ namespace USBCANBridge {
             /**
              * @brief Get the frame Type byte.
              * The Type byte indicates the frame type and format.
-             * @return std::byte The Type byte.
+             * @return std::uint8_t The Type byte.
              */
-            std::byte impl_get_type() const {
+            std::uint8_t impl_get_type() const {
                 return frame_storage_[layout_.TYPE];
             }
             /**
@@ -193,25 +193,29 @@ namespace USBCANBridge {
             std::size_t impl_get_dlc() const;
             /**
              * @brief Get a read-only view of the data payload.
-             * @return span<const std::byte> View of the data
+             * @return span<const std::uint8_t> View of the data
              */
-            span<const std::byte> impl_get_data() const;
+            span<const std::uint8_t> impl_get_data() const;
+            /**
+             * @brief Get a modifiable view of the data payload.
+             * @return span<std::uint8_t> Mutable view of the data
+             */
+            span<std::uint8_t> impl_get_data();
             /**
              * @brief Set the data payload in the internal storage.
              * @warning Changing the data marks the frame as dirty, requiring checksum recomputation.
              * @param data A span representing the data payload to set.
              */
-            void impl_set_data(span<const std::byte> data);
+            void impl_set_data(span<const std::uint8_t> data);
             /**
              * @brief Check if the frame is using an extended CAN ID.
              * @return bool True if extended, false if standard
              */
             bool impl_is_extended() const;
-
-        private:
             /**
              * @brief Set the data length code (DLC) in the internal storage.
              * @warning Changing the DLC marks the frame as dirty, requiring checksum recomputation.
+             * @note This is called internally by set_data() and should not be called directly.
              * @param dlc The DLC to set.
              */
             void impl_set_dlc(std::size_t dlc);

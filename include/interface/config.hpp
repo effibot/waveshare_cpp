@@ -78,7 +78,7 @@ namespace USBCANBridge {
                 for (size_t i = 0; i < this->layout_.FILTER_SIZE; ++i) {
                     this->frame_storage_[
                         this->layout_.FILTER + this->layout_.FILTER_SIZE - 1 - i
-                    ] = (static_cast<std::byte>(filter & 0xFF));
+                    ] = (static_cast<std::uint8_t>(filter & 0xFF));
                     filter >>= 8;
                 }
                 // Mark checksum as dirty since we changed the frame
@@ -113,7 +113,7 @@ namespace USBCANBridge {
                 for (size_t i = 0; i < this->layout_.MASK_SIZE; ++i) {
                     this->frame_storage_[
                         this->layout_.MASK + this->layout_.MASK_SIZE - 1 - i
-                    ] = (static_cast<std::byte>(mask & 0xFF));
+                    ] = (static_cast<std::uint8_t>(mask & 0xFF));
                     mask >>= 8;
                 }
                 // Mark checksum as dirty since we changed the frame

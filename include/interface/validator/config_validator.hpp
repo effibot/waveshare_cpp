@@ -91,7 +91,7 @@ namespace USBCANBridge {
              * @note The acceptance filter is a 32-bit mask. Any value inside the CAN2.0A ([`0x0`-`0x7FF`]) or CAN2.0B ([`0x0`-`0x1FFFFFFF`]) range is considered valid.
              */
             Result<bool> validateFilter(uint32_t filter) const {
-                auto frame_type = frame_->get_CAN_vesion();
+                auto frame_type = frame_->get_CAN_version();
                 if (!frame_type) {
                     return Result<bool>::error(frame_type.error());
                 }
@@ -114,7 +114,7 @@ namespace USBCANBridge {
              * @note The acceptance mask is a 32-bit mask. Any value inside the CAN2.0A ([`0x0`-`0x7FF`]) or CAN2.0B ([`0x0`-`0x1FFFFFFF`]) range is considered valid.
              */
             Result<bool> validateMask(uint32_t mask) const {
-                auto frame_type = frame_->get_CAN_vesion();
+                auto frame_type = frame_->get_CAN_version();
                 if (!frame_type) {
                     return Result<bool>::error(frame_type.error());
                 }

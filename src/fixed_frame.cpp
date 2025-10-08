@@ -6,7 +6,7 @@ namespace USBCANBridge {
 
     // === FixedFrame impl_*() Methods ===
     CANVersion FixedFrame::impl_get_CAN_version() const {
-        std::byte frame_type = frame_storage_[layout_.CAN_VERS];
+        std::uint8_t frame_type = frame_storage_[layout_.CAN_VERS];
         return from_byte<CANVersion>(frame_type);
     }
     void FixedFrame::impl_set_CAN_version(CANVersion ver) {
@@ -16,7 +16,7 @@ namespace USBCANBridge {
     }
 
     Format FixedFrame::impl_get_format() const {
-        std::byte frame_fmt = frame_storage_[layout_.FORMAT];
+        std::uint8_t frame_fmt = frame_storage_[layout_.FORMAT];
         return from_byte<Format>(frame_fmt);
     }
     void FixedFrame::impl_set_format(Format format) {
@@ -44,7 +44,7 @@ namespace USBCANBridge {
         if (dlc > layout_t<FixedFrame>::DATA_SIZE) {
             throw std::out_of_range("DLC exceeds maximum for FixedFrame");
         }
-        frame_storage_[layout_.DLC] = static_cast<std::byte>(dlc);
+        frame_storage_[layout_.DLC] = static_cast<std::uint8_t>(dlc);
         // Mark checksum as dirty since we changed the frame
         checksum_interface_.mark_dirty();
     }
@@ -53,11 +53,17 @@ namespace USBCANBridge {
         return static_cast<std::size_t>(frame_storage_[layout_.DLC]);
     }
 
-    span<const std::byte> FixedFrame::impl_get_data() const {
+    span<const std::uint8_t> FixedFrame::impl_get_data() const {
         std::size_t dlc = impl_get_dlc();
         return frame_storage_.subspan(layout_.DATA, dlc);
     }
-    void FixedFrame::impl_set_data(span<const std::byte> data) {
+
+    span<std::uint8_t> FixedFrame::impl_get_data() {
+        std::size_t dlc = impl_get_dlc();
+        return frame_storage_.subspan(layout_.DATA, dlc);
+    }
+
+    void FixedFrame::impl_set_data(span<const std::uint8_t> data) {
         std::size_t dlc = data.size();
         if (dlc > layout_t<FixedFrame>::DATA_SIZE) {
             throw std::out_of_range("Data size exceeds maximum for FixedFrame");
@@ -70,7 +76,7 @@ namespace USBCANBridge {
 
     bool FixedFrame::impl_is_extended() const {
         // Retrieve the CAN_VERS byte
-        std::byte canvers = frame_storage_[layout_.CAN_VERS];
+        std::uint8_t canvers = frame_storage_[layout_.CAN_VERS];
         // Check if it indicates extended ID
         return from_byte<CANVersion>(canvers) == CANVersion::EXT_FIXED;
     }

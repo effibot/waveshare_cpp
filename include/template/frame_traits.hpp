@@ -89,7 +89,7 @@ namespace USBCANBridge {
     template<typename Frame>
     struct FrameTraits {
         static constexpr std::size_t FRAME_SIZE = 0;
-        std::array<std::byte, 0> frame_buffer = {}; // Intentionally empty to prevent usage
+        std::array<std::uint8_t, 0> frame_buffer = {}; // Intentionally empty to prevent usage
         using StorageType = void; // Intentionally void to prevent usage
         struct Layout {}; // Empty layout to prevent usage
     };
@@ -104,8 +104,8 @@ namespace USBCANBridge {
     template<>
     struct FrameTraits<FixedFrame> {
         static constexpr std::size_t FRAME_SIZE = 20;
-        alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
-        using StorageType = span<std::byte, FRAME_SIZE>;
+        alignas(8) std::array<std::uint8_t, FRAME_SIZE> frame_buffer = {};
+        using StorageType = span<std::uint8_t, FRAME_SIZE>;
         static constexpr std::size_t MAX_DATA_SIZE = 8;
 
 
@@ -144,8 +144,9 @@ namespace USBCANBridge {
         static constexpr std::size_t MIN_DATA_SIZE = 0;
         static constexpr std::size_t MAX_ID_SIZE = 4; // Extended ID
         static constexpr std::size_t MIN_ID_SIZE = 2; // Standard ID
-        alignas(8) std::vector<std::byte> frame_buffer = std::vector<std::byte>(MIN_FRAME_SIZE);
-        using StorageType = span<std::byte>; // Dynamic size
+        alignas(8) std::vector<std::uint8_t> frame_buffer =
+            std::vector<std::uint8_t>(MIN_FRAME_SIZE);
+        using StorageType = span<std::uint8_t>; // Dynamic size
 
 
         /**
@@ -212,8 +213,8 @@ namespace USBCANBridge {
     template<>
     struct FrameTraits<ConfigFrame> {
         static constexpr std::size_t FRAME_SIZE = 20;
-        alignas(8) std::array<std::byte, FRAME_SIZE> frame_buffer = {};
-        using StorageType = span<std::byte, FRAME_SIZE>;
+        alignas(8) std::array<std::uint8_t, FRAME_SIZE> frame_buffer = {};
+        using StorageType = span<std::uint8_t, FRAME_SIZE>;
 
 
         /**

@@ -39,7 +39,7 @@ namespace USBCANBridge {
 
             // # Internal State
             bool is_dirty_ = true; // To track if frame has been modified
-            std::byte& type_field_;
+            std::uint8_t& type_field_;
 
 
         public:
@@ -88,7 +88,7 @@ namespace USBCANBridge {
              * @param type The Type byte to extract from.
              * @return The extracted Type base byte.
              */
-            constexpr static Type extract_type_base(std::byte type) {
+            constexpr static Type extract_type_base(std::uint8_t type) {
                 return static_cast<Type>(
                     static_cast<std::uint8_t>(type) & 0xC0);
             }
@@ -101,7 +101,7 @@ namespace USBCANBridge {
              * @param type The Type byte to extract from.
              * @return The extracted CANVersion.
              */
-            constexpr static CANVersion extract_frame_type(std::byte type) {
+            constexpr static CANVersion extract_frame_type(std::uint8_t type) {
                 return static_cast<CANVersion>(
                     (static_cast<std::uint8_t>(type) >> 5) & 1);
             }
@@ -114,7 +114,7 @@ namespace USBCANBridge {
              * @param type The Type byte to extract from.
              * @return The extracted Format.
              */
-            constexpr static Format extract_frame_format(std::byte type) {
+            constexpr static Format extract_frame_format(std::uint8_t type) {
                 return static_cast<Format>(
                     (static_cast<std::uint8_t>(type) >> 4) & 1);
             }
@@ -127,7 +127,7 @@ namespace USBCANBridge {
              * @param type The Type byte to extract from.
              * @return The extracted DLC (0-8).
              */
-            constexpr static std::size_t extract_dlc(std::byte type) {
+            constexpr static std::size_t extract_dlc(std::uint8_t type) {
                 return static_cast<std::size_t>(static_cast<std::uint8_t>(type) & 0x0F);
             }
             /**
@@ -153,10 +153,10 @@ namespace USBCANBridge {
              * @return The calculated Type byte for the VariableFrame
              */
 
-            constexpr static std::byte compute_type(CANVersion can_ver, Format frame_fmt,
+            constexpr static std::uint8_t compute_type(CANVersion can_ver, Format frame_fmt,
                 std::size_t dlc) {
                 // Combine all bit operations into a single expression
-                return static_cast<std::byte>(
+                return static_cast<std::uint8_t>(
                     static_cast<std::uint8_t>(Type::DATA_VARIABLE) |
                     (static_cast<std::uint8_t>(can_ver) << 5) |
                     (static_cast<std::uint8_t>(frame_fmt) << 4) |
@@ -192,7 +192,7 @@ namespace USBCANBridge {
              */
             Type get_type() const {
                 // compute a new Type byte from the current frame properties
-                std::byte new_type = compute_type(
+                std::uint8_t new_type = compute_type(
                     get_frame().impl_get_CAN_version(),
                     get_frame().impl_get_format(),
                     get_frame().impl_get_dlc()

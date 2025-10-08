@@ -163,5 +163,6 @@
     "stack": "cpp",
     "stacktrace": "cpp",
     "syncstream": "cpp"
-  }
+  },
+  "cmake.sourceDirectory": "/home/effi/Projects/waveshare_cpp/tests"
 }

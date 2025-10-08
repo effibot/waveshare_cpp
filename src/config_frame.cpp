@@ -16,21 +16,21 @@ namespace USBCANBridge {
 
     // === ConfigFrame impl_*() Methods ===
     Type ConfigFrame::impl_get_type() const {
-        std::byte frame_type = frame_storage_[layout_.TYPE];
+        std::uint8_t frame_type = frame_storage_[layout_.TYPE];
         return from_byte<Type>(frame_type);
     }
-    void ConfigFrame::impl_set_type(Type type) {
-        frame_storage_[layout_.TYPE] = to_byte(type);
+    void ConfigFrame::impl_set_type(Type ver) {
+        frame_storage_[layout_.TYPE] = to_byte(ver);
         // Mark checksum as dirty since we changed the frame
         checksum_interface_.mark_dirty();
     }
 
     CANVersion ConfigFrame::impl_get_CAN_version() const {
-        std::byte frame_type = frame_storage_[layout_.CAN_VERS];
+        std::uint8_t frame_type = frame_storage_[layout_.CAN_VERS];
         return from_byte<CANVersion>(frame_type);
     }
-    void ConfigFrame::impl_set_CAN_version(CANVersion type) {
-        frame_storage_[layout_.CAN_VERS] = to_byte(type);
+    void ConfigFrame::impl_set_CAN_version(CANVersion ver) {
+        frame_storage_[layout_.CAN_VERS] = to_byte(ver);
         // Mark checksum as dirty since we changed the frame
         checksum_interface_.mark_dirty();
     }

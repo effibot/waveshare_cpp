@@ -28,21 +28,40 @@ namespace USBCANBridge {
 
         // === Utility Methods ===
         public:
+        public:
             /**
              * @brief Find if the frame is a remote frame.
+             * Remote frames are determined by the FORMAT byte:
+             * - For Fixed frames: REMOTE_FIXED (0x02)
+             * - For Variable frames: REMOTE_VARIABLE (0x01)
+             * Since DATA_FIXED and REMOTE_VARIABLE both use 0x01, we need to check
+             * the frame type (via CAN_VERS) to distinguish them.
              * @return bool True if remote frame, false otherwise
              */
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, bool>
             is_remote() const {
                 auto fmt = this->derived().impl_get_format();
-                return fmt == Format::REMOTE_FIXED ||
-                       fmt == Format::REMOTE_VARIABLE;
+                auto vers = this->derived().impl_get_CAN_version();
+
+                // Check if this is a fixed or variable frame
+                bool is_fixed = (vers == CANVersion::STD_FIXED || vers == CANVersion::EXT_FIXED);
+                bool is_variable = (vers == CANVersion::STD_VARIABLE ||
+                    vers == CANVersion::EXT_VARIABLE);
+
+                if (is_fixed) {
+                    return fmt == Format::REMOTE_FIXED;  // 0x02
+                } else if (is_variable) {
+                    return fmt == Format::REMOTE_VARIABLE;  // 0x01
+                }
+
+                return false;  // Unknown frame type
             }
 
             /**
              * @brief Check if the frame is extended (29-bit ID) or standard (11-bit ID).
              * @return bool True if extended, false if standard
+               ```
              */
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, bool>
@@ -67,10 +86,10 @@ namespace USBCANBridge {
 
             /**
              * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
+             * @return span<std::uint8_t> A subspan representing the ID field
              */
             template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
+            std::enable_if_t<is_data_frame_v<T>, span<std::uint8_t> >
             get_CAN_id_span() {
                 return this->get_storage().subspan(
                     this->layout_.ID,
@@ -80,10 +99,10 @@ namespace USBCANBridge {
 
             /**
              * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
+             * @return span<std::uint8_t> A subspan representing the ID field
              */
             template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
+            std::enable_if_t<is_data_frame_v<T>, span<const std::uint8_t> >
             get_CAN_id_span() const {
                 const storage_t<T>& frame_storage = this->get_storage();
                 const size_t id_size = this->get_id_field_size();
@@ -171,20 +190,20 @@ namespace USBCANBridge {
 
             /**
              * @brief Get a modifiable view of the data payload.
-             * @return span<std::byte> Mutable view of the data
+             * @return span<std::uint8_t> Mutable view of the data
              */
             template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
+            std::enable_if_t<is_data_frame_v<T>, span<std::uint8_t> >
             get_data() {
                 return this->derived().impl_get_data();
             }
 
             /**
              * @brief Get a read-only view of the data payload.
-             * @return span<const std::byte> View of the data
+             * @return span<const std::uint8_t> View of the data
              */
             template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
+            std::enable_if_t<is_data_frame_v<T>, span<const std::uint8_t> >
             get_data() const {
                 return this->derived().impl_get_data();
             }
@@ -198,7 +217,7 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, void>
-            set_data(span<const std::byte> data) {
+            set_data(span<const std::uint8_t> data) {
                 this->derived().impl_set_data(data);
                 set_dlc(data.size());
             }

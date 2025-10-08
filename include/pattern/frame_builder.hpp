@@ -38,13 +38,13 @@ namespace USBCANBridge {
         // Data frame fields
         std::optional<Format> format;
         std::optional<uint32_t> id;
-        std::optional<std::vector<std::byte> > data;
+        std::optional<std::vector<std::uint8_t> > data;
 
         // Config frame fields
         std::optional<CANBaud> baud_rate;
         std::optional<CANMode> mode;
-        std::optional<std::array<std::byte, 4> > filter;
-        std::optional<std::array<std::byte, 4> > mask;
+        std::optional<std::array<std::uint8_t, 4> > filter;
+        std::optional<std::array<std::uint8_t, 4> > mask;
         std::optional<RTX> auto_rtx;
 
         // Builder state
@@ -130,14 +130,15 @@ namespace USBCANBridge {
                 frame.set_id(state_.id.value());
 
                 if (state_.data) {
-                    frame.set_data(span<const std::byte>(state_.data->data(), state_.data->size()));
+                    frame.set_data(span<const std::uint8_t>(state_.data->data(),
+                        state_.data->size()));
                 }
 
                 return frame;
             }
 
             Frame construct_variable_frame() const {
-                std::vector<std::byte> init_id;
+                std::vector<std::uint8_t> init_id;
                 std::size_t id_size = (state_.can_version.value() ==
                     CANVersion::EXT_VARIABLE) ? 4 : 2;
 
@@ -145,7 +146,7 @@ namespace USBCANBridge {
                     uint32_t id_val = state_.id.value();
                     init_id.resize(id_size);
                     for (std::size_t i = 0; i < id_size; ++i) {
-                        init_id[i] = static_cast<std::byte>((id_val >> (i * 8)) & 0xFF);
+                        init_id[i] = static_cast<std::uint8_t>((id_val >> (i * 8)) & 0xFF);
                     }
                 }
 
@@ -154,7 +155,7 @@ namespace USBCANBridge {
                     state_.can_version.value(),
                     init_id,
                     state_.data ? state_.data->size() : 0,
-                    state_.data ? *state_.data : std::vector<std::byte>{}
+                    state_.data ? *state_.data : std::vector<std::uint8_t>{}
                 );
 
                 return frame;
@@ -163,8 +164,8 @@ namespace USBCANBridge {
             Frame construct_config_frame() const {
                 Frame frame(
                     state_.type.value_or(DEFAULT_CONF_TYPE),
-                    state_.filter.value_or(std::array<std::byte, 4>{}),
-                    state_.mask.value_or(std::array<std::byte, 4>{}),
+                    state_.filter.value_or(std::array<std::uint8_t, 4>{}),
+                    state_.mask.value_or(std::array<std::uint8_t, 4>{}),
                     state_.auto_rtx.value_or(RTX::AUTO),
                     state_.baud_rate.value(),
                     state_.mode.value()
@@ -208,11 +209,13 @@ namespace USBCANBridge {
 
             /**
              * @brief Set the CAN version for the frame.
-             * @param frame_type The CAN version (standard/extended)
+             * @param ver The CAN version (standard/extended)
              * @return Reference to the builder for chaining.
              */
-            FrameBuilder& can_version(CANVersion frame_type) {
-                state_.can_version = frame_type;
+            template<typename T = Frame>
+            std::enable_if_t<!is_variable_frame_v<T>, FrameBuilder&>
+            can_version(CANVersion ver) {
+                state_.can_version = ver;
                 return *this;
             }
 
@@ -224,7 +227,7 @@ namespace USBCANBridge {
              * @return Reference to the builder for chaining.
              */
             template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, FrameBuilder&>
+            std::enable_if_t<is_data_frame_v<T>&& !is_variable_frame_v<T>, FrameBuilder&>
             format(Format format) {
                 state_.format = format;
                 return *this;
@@ -250,7 +253,7 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<is_data_frame_v<T>, FrameBuilder&>
-            data(const std::vector<std::byte>& data) {
+            data(const std::vector<std::uint8_t>& data) {
                 if (data.size() > traits_t::MAX_DATA_SIZE) {
                     throw std::out_of_range("Data size exceeds maximum for frame");
                 }
@@ -291,7 +294,7 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, FrameBuilder&>
-            filter(const std::array<std::byte, 4>& filter) {
+            filter(const std::array<std::uint8_t, 4>& filter) {
                 state_.filter = filter;
                 return *this;
             }
@@ -303,7 +306,7 @@ namespace USBCANBridge {
              */
             template<typename T = Frame>
             std::enable_if_t<is_config_frame_v<T>, FrameBuilder&>
-            mask(const std::array<std::byte, 4>& mask) {
+            mask(const std::array<std::uint8_t, 4>& mask) {
                 state_.mask = mask;
                 return *this;
             }

@@ -5,9 +5,7 @@
       "includePath": [
         "${workspaceFolder}/**",
         ".",
-        "./include",
-        "/usr/include",
-        "/usr/local/include"
+        "./include"
       ],
       "compilerPath": "/usr/bin/gcc",
       "cStandard": "gnu23",

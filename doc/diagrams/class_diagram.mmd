@@ -1,0 +1,296 @@
+---
+id: 69c29510-fc20-4395-aa0d-fde71b27f8a9
+---
+classDiagram
+    %% Core Template Classes
+    class CoreInterface~Frame~ {
+        <<interface>>
+        #storage_t~Frame~ buffer_
+        #frame_traits_t~Frame~ traits_
+        +get_buffer() storage_t~Frame~
+        +get_layout() layout_t~Frame~
+        +get_traits() frame_traits_t~Frame~
+        +derived() Frame&
+        #impl_init_fields()*
+    }
+    
+    class DataInterface~Frame~ {
+        <<interface>>
+        +get_CAN_id() uint32_t
+        +set_CAN_id(uint32_t)
+        +get_dlc() uint8_t
+        +set_dlc(uint8_t)
+        +get_data() span~byte~
+        +set_data(span~byte~)
+        +is_extended() bool
+        +get_format() Format
+        +set_format(Format)
+        #impl_get_CAN_id()*
+        #impl_set_CAN_id()*
+        #impl_get_dlc()*
+        #impl_set_dlc()*
+    }
+    
+    class ConfigInterface~Frame~ {
+        <<interface>>
+        +get_baud_rate() BaudRate
+        +set_baud_rate(BaudRate)
+        +get_mode() Mode
+        +set_mode(Mode)
+        +get_filter() uint32_t
+        +set_filter(uint32_t)
+        +get_mask() uint32_t
+        +set_mask(uint32_t)
+        +finalize() Result~bool~
+    }
+    
+    class ChecksumInterface~Frame~ {
+        <<interface>>
+        -bool is_dirty_
+        +calculate_checksum() byte
+        +verify_checksum() bool
+        +update_checksum() void
+        +mark_dirty() void
+        +mark_clean() void
+    }
+    
+    class VarTypeInterface~Frame~ {
+        <<interface>>
+        -bool type_dirty_
+        +reconstruct_type() void
+        +get_type_byte() byte
+        +mark_dirty() void
+        +mark_clean() void
+    }
+    
+    %% Concrete Frame Classes
+    class FixedFrame {
+        -array~byte,20~ buffer_
+        +FixedFrame()
+        +impl_init_fields() void
+        +impl_get_type() byte
+        +impl_set_type(byte)
+        +impl_get_CAN_id() uint32_t
+        +impl_set_CAN_id(uint32_t)
+        +impl_get_dlc() uint8_t
+        +impl_set_dlc(uint8_t)
+    }
+    
+    class VariableFrame {
+        -span~byte~ buffer_
+        +VariableFrame()
+        +impl_init_fields() void
+        +impl_get_type() byte
+        +impl_set_type(byte)
+        +impl_get_CAN_id() uint32_t
+        +impl_set_CAN_id(uint32_t)
+        +impl_get_dlc() uint8_t
+        +impl_set_dlc(uint8_t)
+        +resize_buffer(size_t) void
+    }
+    
+    class ConfigFrame {
+        -array~byte,20~ buffer_
+        +ConfigFrame()
+        +impl_init_fields() void
+        +impl_get_type() byte
+        +impl_set_type(byte)
+        +finalize() Result~bool~
+    }
+    
+    %% Traits and Layout
+    class FrameTraits~Frame~ {
+        <<trait>>
+        +StorageType
+        +LayoutType
+        +has_checksum : bool$
+        +is_data_frame : bool$
+        +is_config_frame : bool$
+    }
+    
+    class FixedFrameLayout {
+        +START : size_t$
+        +HEADER : size_t$
+        +TYPE : size_t$
+        +CAN_VERS : size_t$
+        +FORMAT : size_t$
+        +ID : size_t$
+        +DLC : size_t$
+        +DATA : size_t$
+        +RESERVED : size_t$
+        +CHECKSUM : size_t$
+        +SIZE : size_t$
+    }
+    
+    class VariableFrameLayout {
+        +START : size_t$
+        +TYPE : size_t$
+        +ID : size_t$
+        +DATA : size_t$
+        +END : size_t$
+        +id_size(bool) size_t$
+        +data_offset(bool) size_t$
+        +calculate_size(bool, uint8_t) size_t$
+    }
+    
+    class ConfigFrameLayout {
+        +START : size_t$
+        +HEADER : size_t$
+        +TYPE : size_t$
+        +CAN_VERS : size_t$
+        +FORMAT : size_t$
+        +BAUD_RATE : size_t$
+        +MODE : size_t$
+        +FILTER : size_t$
+        +MASK : size_t$
+        +RESERVED : size_t$
+        +CHECKSUM : size_t$
+        +SIZE : size_t$
+    }
+    
+    %% Builder Pattern
+    class FrameBuilder~Frame~ {
+        -optional~CANVersion~ can_version_
+        -optional~Format~ format_
+        -optional~uint32_t~ id_
+        -optional~uint8_t~ dlc_
+        -optional~vector~byte~~ data_
+        -optional~BaudRate~ baud_rate_
+        -optional~Mode~ mode_
+        +FrameBuilder()
+        +with_can_version(CANVersion) FrameBuilder&
+        +with_format(Format) FrameBuilder&
+        +with_id(uint32_t) FrameBuilder&
+        +with_dlc(uint8_t) FrameBuilder&
+        +with_data(span~byte~) FrameBuilder&
+        +with_baud_rate(BaudRate) FrameBuilder&
+        +with_mode(Mode) FrameBuilder&
+        +validate_state() Result~bool~
+        +build() Result~Frame~
+    }
+    
+    %% Result Type
+    class Result~T~ {
+        -optional~T~ value_
+        -Status error_
+        -vector~string~ context_chain_
+        +success(T) Result~T~$
+        +failure(Status) Result~T~$
+        +ok() bool
+        +fail() bool
+        +value() T&
+        +error() Status
+        +describe() string
+        +add_context(string) Result&
+    }
+    
+    class Status {
+        <<enumeration>>
+        SUCCESS
+        INVALID_START_BYTE
+        INVALID_TYPE
+        INVALID_CAN_VERSION
+        INVALID_FORMAT
+        INVALID_ID
+        INVALID_DLC
+        INVALID_DATA_SIZE
+        CHECKSUM_MISMATCH
+        INVALID_BAUD_RATE
+        INVALID_MODE
+        BUFFER_TOO_SMALL
+        BUILDER_MISSING_FIELD
+    }
+    
+    %% Enumerations
+    class CANVersion {
+        <<enumeration>>
+        STD_FIXED
+        EXT_FIXED
+        STD_VARIABLE
+        EXT_VARIABLE
+    }
+    
+    class Format {
+        <<enumeration>>
+        DATA_FIXED
+        DATA_VARIABLE
+        CONF_FIXED
+        CONF_VARIABLE
+    }
+    
+    class BaudRate {
+        <<enumeration>>
+        BAUD_5K
+        BAUD_10K
+        BAUD_20K
+        BAUD_50K
+        BAUD_100K
+        BAUD_125K
+        BAUD_200K
+        BAUD_250K
+        BAUD_500K
+        BAUD_800K
+        BAUD_1000K
+    }
+    
+    class Mode {
+        <<enumeration>>
+        NORMAL
+        LOOPBACK
+        SILENT
+        LOOPBACK_SILENT
+    }
+    
+    %% CRTP Inheritance Relationships
+    CoreInterface~Frame~ <|-- DataInterface~Frame~ : extends
+    CoreInterface~Frame~ <|-- ConfigInterface~Frame~ : extends
+    CoreInterface~FixedFrame~ <|-- FixedFrame : CRTP
+    DataInterface~FixedFrame~ <|-- FixedFrame : CRTP
+    ChecksumInterface~FixedFrame~ <|-- FixedFrame : CRTP
+    
+    CoreInterface~VariableFrame~ <|-- VariableFrame : CRTP
+    DataInterface~VariableFrame~ <|-- VariableFrame : CRTP
+    VarTypeInterface~VariableFrame~ <|-- VariableFrame : CRTP
+    
+    CoreInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
+    ConfigInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
+    ChecksumInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
+    
+    %% Composition Relationships
+    CoreInterface~Frame~ *-- "1" FrameTraits~Frame~ : uses
+    FrameTraits~FixedFrame~ *-- "1" FixedFrameLayout : provides
+    FrameTraits~VariableFrame~ *-- "1" VariableFrameLayout : provides
+    FrameTraits~ConfigFrame~ *-- "1" ConfigFrameLayout : provides
+    
+    %% Builder Creates Frames
+    FrameBuilder~Frame~ ..> FixedFrame : creates
+    FrameBuilder~Frame~ ..> VariableFrame : creates
+    FrameBuilder~Frame~ ..> ConfigFrame : creates
+    
+    %% Result Usage
+    FrameBuilder~Frame~ ..> Result~Frame~ : returns
+    ConfigInterface~Frame~ ..> Result~bool~ : returns
+    Result~T~ --> Status : contains
+    
+    %% Frame uses Enums
+    DataInterface~Frame~ ..> CANVersion : uses
+    DataInterface~Frame~ ..> Format : uses
+    ConfigInterface~Frame~ ..> BaudRate : uses
+    ConfigInterface~Frame~ ..> Mode : uses
+
+    click CoreInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/core.hpp")
+    click DataInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/data.hpp")
+    click ConfigInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/config.hpp")
+    click ChecksumInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/checksum.hpp")
+    click VarTypeInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/vartype.hpp")
+    click FixedFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/fixed_frame.hpp#L35")
+    click VariableFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/variable_frame.hpp#L23")
+    click ConfigFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/config_frame.hpp#L34")
+    click FrameTraits call linkCallback("/home/effi/Projects/waveshare_cpp/include/template/frame_traits.hpp")
+    click FrameBuilder call linkCallback("/home/effi/Projects/waveshare_cpp/include/pattern/frame_builder.hpp#L178")
+    click Result call linkCallback("/home/effi/Projects/waveshare_cpp/include/template/result.hpp#L33")
+    click Status call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
+    click CANVersion call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
+    click Format call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
+    click BaudRate call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
+    click Mode call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")

@@ -34,8 +34,8 @@ namespace USBCANBridge {
             Format current_format_;
             CANVersion current_version_;
             std::size_t current_dlc_ = 0; // Data Length Code (0-8)
-            std::vector<std::byte> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
-            std::vector<std::byte> init_data; // Initial data bytes (0-8 bytes)
+            std::vector<std::uint8_t> init_id; // Initial ID bytes (2 or 4 bytes, little-endian)
+            std::vector<std::uint8_t> init_data; // Initial data bytes (0-8 bytes)
             // * Helper interface for Type field manipulation
             VarTypeInterface<VariableFrame> var_type_interface_;
 
@@ -50,14 +50,14 @@ namespace USBCANBridge {
              * @note This will not update the internal state of the frame and should be used alongside the `merge_buffer()` method to reconstruct a valid buffer and update the frame.
              * @return A pair of vectors containing the two parts of the split buffer.
              */
-            std::pair<std::vector<std::byte>, std::vector<std::byte> >
+            std::pair<std::vector<std::uint8_t>, std::vector<std::uint8_t> >
             split_buffer(std::size_t offset) const {
                 if (offset > impl_size()) {
                     throw std::out_of_range("Offset out of bounds in split_buffer");
                 }
                 auto full_span = this->get_storage();
-                std::vector<std::byte> first_part(full_span.begin(), full_span.begin() + offset);
-                std::vector<std::byte> second_part(full_span.begin() + offset, full_span.end());
+                std::vector<std::uint8_t> first_part(full_span.begin(), full_span.begin() + offset);
+                std::vector<std::uint8_t> second_part(full_span.begin() + offset, full_span.end());
                 return {first_part, second_part};
             }
             /**
@@ -68,21 +68,21 @@ namespace USBCANBridge {
              * @throw std::invalid_argument if the resulting size is out of bounds (5-15 bytes).
              * @note This will update the internal state of the frame to reflect the new size.
              */
-            void merge_buffer(const std::vector<std::byte>& first,
-                const std::vector<std::byte>& second) {
+            void merge_buffer(const std::vector<std::uint8_t>& first,
+                const std::vector<std::uint8_t>& second) {
                 std::size_t new_size = first.size() + second.size();
                 if (new_size < traits_.MIN_FRAME_SIZE || new_size > traits_.MAX_FRAME_SIZE) {
                     throw std::invalid_argument(
                         "Resulting buffer size out of bounds in merge_buffer");
                 }
                 // Create new buffer and copy data
-                std::vector<std::byte> new_buffer;
+                std::vector<std::uint8_t> new_buffer;
                 new_buffer.reserve(new_size);
                 new_buffer.insert(new_buffer.end(), first.begin(), first.end());
                 new_buffer.insert(new_buffer.end(), second.begin(), second.end());
                 // Update the frame storage to the new buffer
                 traits_.frame_buffer = std::move(new_buffer);
-                frame_storage_ = span<std::byte>(traits_.frame_buffer.data(), new_size);
+                frame_storage_ = span<std::uint8_t>(traits_.frame_buffer.data(), new_size);
                 // Mark Type field as dirty to ensure it's recomputed before sending
                 var_type_interface_.mark_dirty();
             }
@@ -90,9 +90,10 @@ namespace USBCANBridge {
             // * Constructors
             VariableFrame(Format fmt = Format::DATA_VARIABLE,
                 CANVersion ver = CANVersion::STD_VARIABLE,
-                std::vector<std::byte> init_id = {},
+                std::vector<std::uint8_t> init_id = {},
                 size_t payload_size = 0,
-                std::vector<std::byte> init_data = {}) : DataInterface<VariableFrame>(),
+                std::vector<std::uint8_t> init_data = {}) :
+                DataInterface<VariableFrame>(),
                 current_format_(fmt),
                 current_version_(ver),
                 current_dlc_(payload_size),
@@ -100,10 +101,6 @@ namespace USBCANBridge {
                 init_data(std::move(init_data)),
                 var_type_interface_(*this) {
                 // * The base constructor will call impl_init_fields(), here defined.
-            }
-
-            VariableFrame() : VariableFrame(Format::DATA_VARIABLE,
-                    CANVersion::STD_VARIABLE, {}, 0, {}) {
             }
 
             // === Core impl_*() Methods ===
@@ -140,7 +137,7 @@ namespace USBCANBridge {
                 }
                 if (must_resize) {
                     traits_.frame_buffer.resize(new_size);
-                    frame_storage_ = span<std::byte>(traits_.frame_buffer.data(), new_size);
+                    frame_storage_ = span<std::uint8_t>(traits_.frame_buffer.data(), new_size);
                 }
                 // * Set the Type byte
                 frame_storage_[layout_.TYPE] = to_byte(Type::DATA_VARIABLE);
@@ -238,19 +235,14 @@ namespace USBCANBridge {
              * @note This uses the cached current_version_ variable for efficiency.
              */
             bool impl_is_extended() const;
-
-
-        private:
             /**
              * @brief Set the data length code (DLC) for the frame.
              * @param dlc The DLC value to set (0-8).
              * @throw std::out_of_range if the DLC is out of bounds.
              * @warning Changing the DLC marks the frame as dirty, requiring type recomputation when needed.
-             * @note This updates the internal cached DLC value.
+             * @note This is called internally by set_data() and should not be called directly.
              */
             void impl_set_dlc(std::size_t dlc);
-
-        public:
             /**
              * @brief Get the frame version from the internal storage.
              * @return CANVersion The frame version
@@ -296,21 +288,21 @@ namespace USBCANBridge {
 
             /**
              * @brief Get a read-only view of the data payload.
-             * @return span<const std::byte> View of the data
+             * @return span<const std::uint8_t> View of the data
              */
-            span<const std::byte> impl_get_data() const;
+            span<const std::uint8_t> impl_get_data() const;
 
             /**
              * @brief Get a modifiable view of the data payload.
-             * @return span<std::byte> Mutable view of the data
+             * @return span<std::uint8_t> Mutable view of the data
              */
-            span<std::byte> impl_get_data();
+            span<std::uint8_t> impl_get_data();
 
             /**
              * @brief Set the data payload in the internal storage.
              * @param data A span representing the data payload to set.
              */
-            void impl_set_data(span<const std::byte> data);
+            void impl_set_data(span<const std::uint8_t> data);
 
     };
 }
