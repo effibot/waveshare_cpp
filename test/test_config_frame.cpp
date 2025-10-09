@@ -84,7 +84,7 @@ TEST_CASE("ConfigFrame - Parameterized constructor sets all fields correctly",
     };
 
     ConfigFrame frame(
-        Type::CONF_FIXED,
+        Type::CONF_VARIABLE,
         filter,
         mask,
         RTX::OFF,
