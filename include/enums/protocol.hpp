@@ -2,8 +2,11 @@
  * @file protocol.hpp
  * @author Andrea Efficace (andrea.efficace1@gmail.com)
  * @brief Protocol definitions and helper functions for USB-CAN bridge.
- * @version 0.1
- * @date 2025-10-01
+ * @version 3.0 - State-First Architecture
+ * @date 2025-10-09
+ *
+ * Protocol constants and enum definitions for USB-CAN adapter communication.
+ * Compatible with state-first frame architecture (v3.0).
  *
  * @copyright Copyright (c) 2025
  *
@@ -18,8 +21,10 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <array>
+#include <boost/core/span.hpp>
 
-#include "../template/frame_traits.hpp"
+using namespace boost;
 
 /**
  * @namespace USBCANBridge
@@ -280,59 +285,6 @@ namespace USBCANBridge {
     // === Byte Manipulation Helpers ===
 
     /**
-     * @brief Dump the content of a frame storage as a hex string.
-     * This function converts a byte array to a human-readable hexadecimal string representation,
-     * with each byte separated by spaces.
-     * @tparam T The frame type (FixedFrame, VariableFrame, ConfigFrame)
-     * @param data The byte array to convert
-     * @return std::string The hexadecimal string representation of the byte array
-     * @example
-     * @code
-     * auto hex_str = dump_frame<FixedFrame>(frame_data); // hex_str = "AA 55 01 ..."
-     * @endcode
-     */
-    template<typename T>
-    std::string dump_frame(const storage_t<T>& data) {
-        std::ostringstream oss;
-        oss << std::hex << std::setfill('0');
-        for (const auto& byte : data) {
-            oss << std::setw(2) << static_cast<int>(byte) << " ";
-        }
-        std::string result = oss.str();
-        if (!result.empty()) {
-            result.pop_back(); // Remove trailing space
-        }
-        return result;
-    }
-
-    /**
-     * @brief Converts a string of hex values to a byte array.
-     * This function converts a std::string containing hexadecimal byte values (e.g., "AA 55 01")
-     * into a std::array of std::uint8_t.
-     * @param hex_string The input hex string to convert
-     * @return std::array<std::uint8_t, N> The resulting byte array
-     * @throws std::invalid_argument if the input string is not valid hex
-     * @example
-     * @code
-     * auto bytes = hex_string_to_bytes<FixedFrame>("AA 55 01"); // bytes = {0xAA, 0x55, 0x01}
-     * @endcode
-     */
-    template<typename T>
-    storage_t<T> hex_to_bytes(const std::string& hex_string) {
-        constexpr std::size_t N = FrameTraits<T>::FRAME_SIZE;
-        storage_t<T> bytes = {};
-        std::istringstream iss(hex_string);
-        std::string byte_str;
-        while (iss >> byte_str) {
-            if (byte_str.length() != 2) {
-                throw std::invalid_argument("Invalid hex byte");
-            }
-            bytes.push_back(static_cast<std::uint8_t>(std::stoi(byte_str, nullptr, 16)));
-        }
-        return bytes;
-    }
-
-    /**
      * @brief Converts an integer to a little-endian byte array.
      * This function converts an unsigned integer value into a std::array of std::uint8_t of specified size, representing the value in little-endian byte order.
      *
@@ -360,6 +312,7 @@ namespace USBCANBridge {
         }
         return bytes;
     }
+
     template<typename T>
     constexpr std::array<std::uint8_t, sizeof(T)> int_to_bytes_le(T value) {
         static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
@@ -370,9 +323,10 @@ namespace USBCANBridge {
         }
         return bytes;
     }
+
     /**
      * @brief Converts a little-endian byte array to an unsigned integer.
-     * This function converts a std::array of std::uint8_t representing a little-endian byte sequence
+     * This function converts a span of std::uint8_t representing a little-endian byte sequence
      * into an unsigned integer value.
      * @param T The unsigned integer type to convert to (e.g., uint8_t, uint16_t, uint32_t, uint64_t)
      * @param bytes The little-endian byte array (must be <= sizeof(T))
@@ -384,15 +338,76 @@ namespace USBCANBridge {
      * @endcode
      */
     template<typename T>
-    constexpr T bytes_to_int_le(const span<const std::uint8_t>& bytes) {
+    constexpr T bytes_to_int_le(span<const std::uint8_t> bytes) {
         static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
         T value = 0;
-        for (std::size_t i = 0; i < sizeof(T); ++i) {
+        for (std::size_t i = 0; i < bytes.size() && i < sizeof(T); ++i) {
             value |= (static_cast<T>(bytes[i]) & 0xFF) << (8 * i);
         }
         return value;
     }
 
+    /**
+     * @brief Converts an unsigned integer to a big-endian byte array.
+     * This function converts an unsigned integer value into a big-endian byte array
+     * where the most significant byte is at index 0.
+     * @param T The unsigned integer type to convert from (e.g., uint8_t, uint16_t, uint32_t, uint64_t)
+     * @param N The number of bytes to output (must be between 1 and sizeof(T))
+     * @param value The unsigned integer value to convert
+     * @return std::array<std::uint8_t, N> The big-endian byte array representation of the value
+     * @throws static_assert if T is not an unsigned integer type or if N is out of range
+     * @example
+     * @code
+     * auto bytes = int_to_bytes_be<uint32_t, 4>(0x7FF); // bytes = {0x00, 0x00, 0x07, 0xFF}
+     * auto bytes2 = int_to_bytes_be<uint16_t, 2>(0x1234); // bytes2 = {0x12, 0x34}
+     * @endcode
+     */
+    template<typename T, std::size_t N>
+    constexpr std::array<std::uint8_t, N> int_to_bytes_be(T value) {
+        static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
+        static_assert(N > 0 && N <= sizeof(T), "N must be between 1 and sizeof(T)");
+        std::array<std::uint8_t, N> bytes = {};
+        for (std::size_t i = 0; i < N; ++i) {
+            bytes[N - 1 - i] = static_cast<std::uint8_t>(value & 0xFF);
+            value >>= 8;
+        }
+        return bytes;
+    }
+
+    template<typename T>
+    constexpr std::array<std::uint8_t, sizeof(T)> int_to_bytes_be(T value) {
+        static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
+        std::array<std::uint8_t, sizeof(T)> bytes = {};
+        for (std::size_t i = 0; i < sizeof(T); ++i) {
+            bytes[sizeof(T) - 1 - i] = static_cast<std::uint8_t>(value & 0xFF);
+            value >>= 8;
+        }
+        return bytes;
+    }
+
+    /**
+     * @brief Converts a big-endian byte array to an unsigned integer.
+     * This function converts a span of std::uint8_t representing a big-endian byte sequence
+     * into an unsigned integer value, where the most significant byte is at index 0.
+     * @param T The unsigned integer type to convert to (e.g., uint8_t, uint16_t, uint32_t, uint64_t)
+     * @param bytes The big-endian byte array (must be <= sizeof(T))
+     * @return T The unsigned integer value represented by the byte array
+     * @throws static_assert if T is not an unsigned integer type or if N is out of range
+     * @example
+     * @code
+     * // bytes = {0x00, 0x00, 0x07, 0xFF}
+     * auto value = bytes_to_int_be<uint32_t>(bytes); // value = 0x7FF
+     * @endcode
+     */
+    template<typename T>
+    constexpr T bytes_to_int_be(span<const std::uint8_t> bytes) {
+        static_assert(std::is_unsigned<T>::value, "T must be an unsigned integer type");
+        T value = 0;
+        for (std::size_t i = 0; i < bytes.size() && i < sizeof(T); ++i) {
+            value = (value << 8) | (static_cast<T>(bytes[i]) & 0xFF);
+        }
+        return value;
+    }
 
 
 }     // namespace USBCANBridge

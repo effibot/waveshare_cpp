@@ -1,3 +1,3 @@
-file(GLOB WAVESHARE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-add_library(waveshare_cpp ${WAVESHARE_SOURCES})
-target_include_directories(waveshare_cpp PUBLIC ${PROJECT_SOURCE_DIR}/include)
+# Header-only library (all frame implementations are in headers)
+add_library(waveshare_cpp INTERFACE)
+target_include_directories(waveshare_cpp INTERFACE ${PROJECT_SOURCE_DIR}/include)

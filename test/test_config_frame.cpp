@@ -5,7 +5,7 @@
  * Test Strategy:
  * 1. Individual getter/setter pairs
  * 2. Constructor parameter validation
- * 3. Checksum integrity after modifications
+ * 3. Checksum integrity via serialization
  * 4. Round-trip serialization/deserialization
  *
  * @note Build: cd build && cmake .. && cmake --build .
@@ -14,7 +14,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "../include/frame/config_frame.hpp"
-#include "../include/interface/checksum.hpp"
+#include "../include/interface/serialization_helpers.hpp"
 #include <array>
 
 using namespace USBCANBridge;
@@ -65,31 +65,25 @@ TEST_CASE("ConfigFrame - Default constructor initializes with protocol defaults"
     "[constructor]") {
     ConfigFrame frame;
 
-    // Verify defaults from protocol.hpp
-    REQUIRE(frame.get_baud_rate() == CANBaud::BAUD_1M);    // DEFAULT_CAN_BAUD
-    REQUIRE(frame.get_can_mode() == CANMode::NORMAL);       // DEFAULT_CAN_MODE
-    REQUIRE(frame.get_auto_rtx() == RTX::AUTO);             // DEFAULT_RTX
+    // Verify defaults
+    REQUIRE(frame.get_baud_rate() == CANBaud::BAUD_1M);
+    REQUIRE(frame.get_can_mode() == CANMode::NORMAL);
+    REQUIRE(frame.get_auto_rtx() == RTX::AUTO);
     REQUIRE(frame.get_filter() == 0x00000000);
     REQUIRE(frame.get_mask() == 0x00000000);
-    REQUIRE(frame.get_type() == Type::CONF_VARIABLE);       // DEFAULT_CONF_TYPE
+    REQUIRE(frame.get_type() == Type::CONF_FIXED);
 }
 
 TEST_CASE("ConfigFrame - Parameterized constructor sets all fields correctly",
     "[constructor]") {
-    std::array<std::uint8_t, 4> filter = {
-        0x12, 0x34, 0x56, 0x78
-    };
-    std::array<std::uint8_t, 4> mask = {
-        0x00, 0x07, 0xFF, 0xFF
-    };
-
     ConfigFrame frame(
         Type::CONF_VARIABLE,
-        filter,
-        mask,
-        RTX::OFF,
         CANBaud::BAUD_500K,
-        CANMode::LOOPBACK
+        CANMode::LOOPBACK,
+        RTX::OFF,
+        0x12345678,  // filter (uint32_t)
+        0x0007FFFF,  // mask (uint32_t)
+        CANVersion::STD_FIXED
     );
 
     REQUIRE(frame.get_type() == Type::CONF_VARIABLE);
@@ -227,7 +221,7 @@ TEST_CASE("ConfigFrame - Field independence (setters don't interfere)",
 }
 
 // ============================================================================
-// CHECKSUM TESTS - Integrity and dirty bit behavior
+// CHECKSUM TESTS - Integrity via serialization
 // ============================================================================
 
 TEST_CASE("ConfigFrame - Checksum calculation matches standalone method",
@@ -239,68 +233,60 @@ TEST_CASE("ConfigFrame - Checksum calculation matches standalone method",
     frame.set_filter(0x123);
     frame.set_mask(0x7FF);
 
-    // Compute checksum using frame method
-    frame.finalize();
-    std::uint8_t frame_checksum =
-        ChecksumInterface<ConfigFrame>::compute_checksum(frame.get_storage());
+    // Serialize frame (checksum computed automatically)
+    auto serialized = frame.serialize();
 
-    // Compute checksum using static method on same data
-    const auto& storage = frame.get_storage();
-    std::uint8_t static_checksum = ChecksumInterface<ConfigFrame>::compute_checksum(storage);
-
-    REQUIRE(frame_checksum == static_checksum);
+    // Verify checksum using ChecksumHelper
+    REQUIRE(ChecksumHelper::validate(serialized, 19, 2, 18) == true);
 }
 
 TEST_CASE("ConfigFrame - Checksum updates after field modifications",
     "[checksum][dirty]") {
     ConfigFrame frame;
 
-    // Initial checksum
-    frame.finalize();
-    std::uint8_t checksum1 = ChecksumInterface<ConfigFrame>::compute_checksum(frame.get_storage());
-    // Modify a field (should mark dirty)
+    // Initial serialization
+    auto serialized1 = frame.serialize();
+    std::uint8_t checksum1 = serialized1[19];
+
+    // Modify a field
     frame.set_baud_rate(CANBaud::BAUD_250K);
 
-    // Recompute checksum
-    frame.finalize();
-    std::uint8_t checksum2 = ChecksumInterface<ConfigFrame>::compute_checksum(frame.get_storage());
+    // Serialize again
+    auto serialized2 = frame.serialize();
+    std::uint8_t checksum2 = serialized2[19];
 
-    // Checksums should differ (unless by astronomical coincidence)
+    // Checksums should differ
     REQUIRE(checksum1 != checksum2);
 }
 
-TEST_CASE("ConfigFrame - Checksum verification after finalize", "[checksum][verify]") {
+TEST_CASE("ConfigFrame - Checksum verification after serialization", "[checksum][verify]") {
     ConfigFrame frame;
 
     frame.set_baud_rate(CANBaud::BAUD_500K);
     frame.set_filter(0x123);
 
-    // Before finalize, checksum may be invalid
-    // After finalize, checksum should be valid
-    frame.finalize();
+    auto serialized = frame.serialize();
 
-    REQUIRE(ChecksumInterface<ConfigFrame>::verify_checksum(frame.get_storage()) == true);
+    // Checksum should be valid
+    REQUIRE(ChecksumHelper::validate(serialized, 19, 2, 18) == true);
 }
 
 TEST_CASE("ConfigFrame - Static checksum methods work on external data",
     "[checksum][static]") {
     // Create a valid frame dump manually
     std::array<std::uint8_t, 20> data = {
-        0xAA, 0x02, 0x01, 0x01,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00  // Checksum placeholder
+        0xAA, 0x55, 0x02, 0x01,  // START, HEADER, TYPE, BAUD
+        0x01, 0x00, 0x00, 0x00,  // CAN_VERS, FILTER[0-2]
+        0x00, 0x00, 0x00, 0x00,  // FILTER[3], MASK[0-3]
+        0x00, 0x00, 0x00, 0x00,  // MODE, AUTO_RTX, RESERVED[0-1]
+        0x00, 0x00, 0x00, 0x00   // RESERVED[2-3], Checksum placeholder
     };
 
-    // Compute checksum using static method
-    std::uint8_t checksum = ChecksumInterface<ConfigFrame>::compute_checksum(data);
-
-    // Update checksum in data
-    data[19] = checksum;
+    // Compute and write checksum
+    ChecksumHelper::write(data, 19, 2, 18);
 
     // Verify it validates
-    REQUIRE(ChecksumInterface<ConfigFrame>::verify_checksum(data) == true);
+    REQUIRE(ChecksumHelper::validate(data, 19, 2, 18) == true);
 }
 
 // ============================================================================
@@ -310,29 +296,18 @@ TEST_CASE("ConfigFrame - Static checksum methods work on external data",
 TEST_CASE_METHOD(ConfigFrameFixture,
     "ConfigFrame - Round-trip from known frame dump", "[roundtrip][integration]") {
 
-    // Parse the known dump (simulate receiving from device)
-    // Note: ConfigFrame doesn't have a direct "parse from bytes" constructor,
-    // so we'll create frame with expected values and verify byte-level match
-
-    std::array<std::uint8_t, 4> filter = {
-        0x00, 0x00, 0x07, 0xFF
-    };
-    std::array<std::uint8_t, 4> mask = {
-        0x00, 0x00, 0x07, 0xFF
-    };
-
     ConfigFrame frame(
         Type::CONF_VARIABLE,
-        filter,
-        mask,
-        RTX::AUTO,
         CANBaud::BAUD_1M,
         CANMode::NORMAL,
+        RTX::AUTO,
+        EXPECTED_FILTER,  // 0x000007FF
+        EXPECTED_MASK,    // 0x000007FF
         CANVersion::STD_FIXED
     );
 
-    // Finalize to compute checksum
-    frame.finalize();
+    // Serialize frame
+    auto serialized = frame.serialize();
 
     // Field-by-field verification
     REQUIRE(frame.get_baud_rate() == EXPECTED_BAUD);
@@ -342,14 +317,13 @@ TEST_CASE_METHOD(ConfigFrameFixture,
     REQUIRE(frame.get_can_mode() == EXPECTED_MODE);
 
     // Verify checksum matches expected
-    REQUIRE(ChecksumInterface<ConfigFrame>::compute_checksum(frame.get_storage()) ==
-        EXPECTED_CHECKSUM);
+    REQUIRE(serialized[19] == EXPECTED_CHECKSUM);
 
     // Verify entire frame matches dump byte-by-byte
-    const auto& storage = frame.get_storage();
-    for (size_t i = 0; i < frame.size(); ++i) {
-        INFO("Byte index: " << i);  // Catch2 will show this if assertion fails
-        REQUIRE(storage[i] == KNOWN_FRAME_DUMP[i]);
+    REQUIRE(serialized.size() == KNOWN_FRAME_DUMP.size());
+    for (size_t i = 0; i < serialized.size(); ++i) {
+        INFO("Byte index: " << i);
+        REQUIRE(serialized[i] == KNOWN_FRAME_DUMP[i]);
     }
 }
 
@@ -364,40 +338,31 @@ TEST_CASE("ConfigFrame - Serialize-deserialize round-trip preserves data",
     original.set_auto_rtx(RTX::OFF);
     original.set_filter(0xABCDEF12);
     original.set_mask(0x1FFFFFFF);
-    original.finalize();
 
-    // Get the serialized bytes
-    const auto& serialized = original.get_storage();
+    // Serialize
+    auto serialized = original.serialize();
+    REQUIRE(serialized.size() == 20);
+    REQUIRE(serialized[0] == 0xAA);  // START byte
 
-    // Create a new frame from the same byte pattern
-    // (In real code, you'd have a from_bytes() method; here we manually copy)
-    // Layout: [0]START [1]HEADER [2]TYPE [3]BAUD [4]CAN_VERS [5-8]FILTER [9-12]MASK [13]MODE [14]AUTO_RTX [15-18]RESERVED [19]CHECKSUM
-    std::array<std::uint8_t, 4> filter_bytes = {
-        serialized[5], serialized[6], serialized[7], serialized[8]
-    };
-    std::array<std::uint8_t, 4> mask_bytes = {
-        serialized[9], serialized[10], serialized[11], serialized[12]
-    };
-
-    ConfigFrame deserialized(
-        Type::CONF_VARIABLE,
-        filter_bytes,
-        mask_bytes,
-        RTX::OFF,
-        CANBaud::BAUD_500K,
-        CANMode::LOOPBACK,
-        CANVersion::EXT_FIXED  // Must match the original frame's CAN_VERSION
-    );
-    deserialized.finalize();
+    // Deserialize into new frame
+    ConfigFrame deserialized;
+    auto result = deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
+        serialized.size()));
+    REQUIRE(result.ok());
 
     // Verify all fields match
+    REQUIRE(deserialized.get_CAN_version() == original.get_CAN_version());
     REQUIRE(deserialized.get_baud_rate() == original.get_baud_rate());
     REQUIRE(deserialized.get_can_mode() == original.get_can_mode());
     REQUIRE(deserialized.get_auto_rtx() == original.get_auto_rtx());
     REQUIRE(deserialized.get_filter() == original.get_filter());
     REQUIRE(deserialized.get_mask() == original.get_mask());
-    REQUIRE(ChecksumInterface<ConfigFrame>::compute_checksum(deserialized.get_storage()) ==
-        ChecksumInterface<ConfigFrame>::compute_checksum(original.get_storage()));
+
+    // Verify serialization matches
+    auto reserialized = deserialized.serialize();
+    for (size_t i = 0; i < 20; ++i) {
+        REQUIRE(reserialized[i] == serialized[i]);
+    }
 }
 
 // ============================================================================
@@ -406,10 +371,10 @@ TEST_CASE("ConfigFrame - Serialize-deserialize round-trip preserves data",
 
 TEST_CASE("ConfigFrame - Frame size is always 20 bytes", "[size]") {
     ConfigFrame frame;
-    REQUIRE(frame.size() == 20);
+    REQUIRE(frame.serialized_size() == 20);
 
     // Size remains constant after modifications
     frame.set_baud_rate(CANBaud::BAUD_250K);
     frame.set_filter(0x12345678);
-    REQUIRE(frame.size() == 20);
+    REQUIRE(frame.serialized_size() == 20);
 }

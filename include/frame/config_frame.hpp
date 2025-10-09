@@ -1,183 +1,197 @@
+/**
+ * @file config_frame.hpp
+ * @brief ConfigFrame implementation for state-first architecture
+ * @version 3.0
+ * @date 2025-10-09
+ *
+ * State-First Architecture:
+ * - State stored in CoreState and ConfigState
+ * - Serialization on-demand via impl_serialize()
+ * - No persistent buffer storage
+ * - Checksum computed during serialization using ChecksumHelper
+ *
+ * @copyright Copyright (c) 2025
+ */
+
 #pragma once
 
 #include "../interface/config.hpp"
-#include "../interface/checksum.hpp"
-
-
+#include "../interface/serialization_helpers.hpp"
 
 namespace USBCANBridge {
     /**
-     * @brief Configuration frame for the USB-CAN Bridge.
+     * @brief Configuration frame for the USB-CAN Bridge (20 bytes)
      *
-     * This class represents the configuration frame used by the USB-CAN Bridge.
-     * It provides methods to access and modify the configuration parameters.
-     * It inherits from `ConfigInterface` to provide a clean interface for configuration operations.
-     * It also inherits from `ChecksumInterface` to handle checksum calculation and validation.
-     * The frame has a fixed size of 20 bytes and a specific layout as defined in the protocol.
-     * @see File: include/protocol.hpp for constant definitions.
-     * @note The frame structure is defined as follows:
+     * Frame structure:
      * ```
-     * [START][HEADER][TYPE][CAN_BAUD][CAN_VERS][FILTER_ID0-3][MASK_ID0-3][CAN_MODE][AUTO_RTX][RESERVED0-3][CHECKSUM]
+     * [START][HEADER][TYPE][CAN_BAUD][CAN_VERS][FILTER(4)][MASK(4)][CAN_MODE][AUTO_RTX][RESERVED(4)][CHECKSUM]
      * ```
-     * - `START` (1 byte): Start byte, always `0xAA`
-     * - `HEADER` (1 byte): Header byte, always `0x55`
-     * - `TYPE` (1 byte): Frame type, always `0x02`
-     * - `CAN_BAUD` (1 byte): CAN baud rate
-     * - `CAN_VERS` (1 byte): CAN version
-     * - `FILTER` (4 bytes): Acceptance filter, big-endian
-     * - `MASK` (4 bytes): Acceptance mask, big-endian
-     * - `CAN_MODE` (1 byte): CAN mode
-     * - `AUTO_RTX` (1 byte): Auto retransmission setting
-     * - `RESERVED` (4 bytes): Reserved bytes, always `0x00`
-     * - `CHECKSUM` (1 byte): Checksum byte, computed over bytes 2 to 14
      *
-     * @see File: README.md for frame structure details.
+     * Features:
+     * - Fixed 20-byte frame
+     * - Configures baud rate, mode, filters, and masks
+     * - Checksum validation over bytes 2-14
      */
-    class ConfigFrame :
-        public ConfigInterface<ConfigFrame> {
-
+    class ConfigFrame : public ConfigInterface<ConfigFrame> {
         private:
-            // * Composition with ChecksumInterface
-            ChecksumInterface<ConfigFrame> checksum_interface_;
+            // Layout type alias
+            using Layout = FrameTraits<ConfigFrame>::Layout;
 
         public:
-            // * Constructors
+            // === Constructors ===
+
+            /**
+             * @brief Default constructor
+             * Creates a ConfigFrame with default configuration values
+             */
+            ConfigFrame() : ConfigInterface<ConfigFrame>() {
+                // Set default core state
+                core_state_.type = Type::CONF_FIXED;
+                core_state_.can_version = CANVersion::STD_FIXED;
+
+                // Set default config state
+                config_state_.baud_rate = CANBaud::BAUD_1M;
+                config_state_.can_mode = CANMode::NORMAL;
+                config_state_.auto_rtx = RTX::AUTO;
+                config_state_.filter = 0;
+                config_state_.mask = 0;
+            }
+
+            /**
+             * @brief Constructor with parameters
+             * @param type Frame type (CONF_FIXED or CONF_VARIABLE)
+             * @param baud Baud rate setting
+             * @param mode CAN mode (NORMAL, LOOPBACK, LISTENONLY)
+             * @param auto_rtx Automatic retransmission setting
+             * @param filter Acceptance filter value (big-endian)
+             * @param mask Acceptance mask value (big-endian)
+             * @param can_vers CAN version
+             */
             ConfigFrame(
-                Type type = DEFAULT_CONF_TYPE,
-                std::array<std::uint8_t, 4> filter = {},
-                std::array<std::uint8_t, 4> mask = {},
-                RTX auto_rtx = RTX::AUTO,
-                CANBaud baud = CANBaud::BAUD_1M,
-                CANMode mode = CANMode::NORMAL,
-                CANVersion can_vers = CANVersion::STD_FIXED
-            ) : ConfigInterface<ConfigFrame>(),
-                checksum_interface_(*this) {
-                // Base constructor has initialized frame with zeros and START byte
-                // Now set the specific configuration values
+                Type type,
+                CANBaud baud,
+                CANMode mode,
+                RTX auto_rtx,
+                std::uint32_t filter,
+                std::uint32_t mask,
+                CANVersion can_vers
+            ) : ConfigInterface<ConfigFrame>() {
+                core_state_.type = type;
+                core_state_.can_version = can_vers;
+                config_state_.baud_rate = baud;
+                config_state_.can_mode = mode;
+                config_state_.auto_rtx = auto_rtx;
+                config_state_.filter = filter;
+                config_state_.mask = mask;
+            }
 
-                // Set Header and Type
-                frame_storage_[layout_.HEADER] = to_byte(Constants::HEADER);
-                frame_storage_[layout_.TYPE] = to_byte(type);
+            // === Serialization Implementation ===
 
-                // Set configuration parameters
-                frame_storage_[layout_.CAN_VERS] = to_byte(can_vers);
-                frame_storage_[layout_.BAUD] = to_byte(baud);
-                frame_storage_[layout_.MODE] = to_byte(mode);
-                frame_storage_[layout_.AUTO_RTX] = to_byte(auto_rtx);
+            /**
+             * @brief Serialize frame state to 20-byte buffer
+             * @return std::vector<std::uint8_t> 20-byte buffer with checksum
+             */
+            std::vector<std::uint8_t> impl_serialize() const {
+                std::vector<std::uint8_t> buffer(20, 0x00);
 
-                // Set filter and mask
+                // Fixed protocol bytes
+                buffer[Layout::START] = to_byte(Constants::START_BYTE);
+                buffer[Layout::HEADER] = to_byte(Constants::HEADER);
+                buffer[Layout::TYPE] = to_byte(core_state_.type);
+
+                // Configuration bytes
+                buffer[Layout::BAUD] = to_byte(config_state_.baud_rate);
+                buffer[Layout::CAN_VERS] = to_byte(core_state_.can_version);
+
+                // Filter (big-endian, 4 bytes)
+                auto filter_bytes = int_to_bytes_be<std::uint32_t, 4>(config_state_.filter);
+                std::copy(filter_bytes.begin(), filter_bytes.end(),
+                    buffer.begin() + Layout::FILTER);
+
+                // Mask (big-endian, 4 bytes)
+                auto mask_bytes = int_to_bytes_be<std::uint32_t, 4>(config_state_.mask);
+                std::copy(mask_bytes.begin(), mask_bytes.end(), buffer.begin() + Layout::MASK);
+
+                buffer[Layout::MODE] = to_byte(config_state_.can_mode);
+                buffer[Layout::AUTO_RTX] = to_byte(config_state_.auto_rtx);
+
+                // Reserved bytes (4 bytes, all 0x00)
                 for (size_t i = 0; i < 4; ++i) {
-                    frame_storage_[layout_.FILTER + i] = filter[i];
-                    frame_storage_[layout_.MASK + i] = mask[i];
-                    frame_storage_[layout_.RESERVED + i] = to_byte(Constants::RESERVED);
+                    buffer[Layout::RESERVED + i] = to_byte(Constants::RESERVED);
                 }
 
-                // Mark checksum as dirty
-                checksum_interface_.mark_dirty();
-            }
+                // Compute and write checksum
+                ChecksumHelper::write(buffer, Layout::CHECKSUM, Layout::TYPE, Layout::RESERVED + 3);
 
-            // === Core impl_*() Methods ===
-            /**
-             * @brief Initialize the frame fields.
-             * This is called during construction to set up the frame.
-             *
-             * @see File: include/protocol.hpp for constant definitions.
-             *
-             * @see File: README.md for frame structure details.
-             *
-             * @note For a ConfigFrame, the following constant fields are initialized:
-             * - `START` (1 byte): Start byte, always `0xAA` (set in CoreInterface)
-             * - All other fields are set to zero by CoreInterface
-             * - ConfigFrame constructor will set the specific values after base initialization
-             */
-            void impl_init_fields() {
-                // CoreInterface has already zeroed the buffer and set START byte
-                // The ConfigFrame constructor will set the actual configuration values
-                // This method doesn't need to do anything for ConfigFrame
+                return buffer;
             }
 
             /**
-             * @brief Utility to expose and set the dirty bit for checksum management.
-             *
+             * @brief Deserialize byte buffer into frame state
+             * @param buffer Input buffer to parse (must be 20 bytes)
+             * @return Result<void> Success or error status
              */
-            void mark_dirty() {
-                checksum_interface_.mark_dirty();
+            Result<void> impl_deserialize(span<const std::uint8_t> buffer) {
+                if (buffer.size() != 20) {
+                    return Result<void>::error(Status::WBAD_LENGTH,
+                        "ConfigFrame requires exactly 20 bytes");
+                }
+
+                // Validate fixed protocol bytes
+                if (buffer[Layout::START] != to_byte(Constants::START_BYTE)) {
+                    return Result<void>::error(Status::WBAD_FORMAT,
+                        "Invalid START byte");
+                }
+
+                if (buffer[Layout::HEADER] != to_byte(Constants::HEADER)) {
+                    return Result<void>::error(Status::WBAD_FORMAT,
+                        "Invalid HEADER byte");
+                }
+
+                // Validate checksum
+                if (!ChecksumHelper::validate(buffer, Layout::CHECKSUM, Layout::TYPE,
+                    Layout::RESERVED + 3)) {
+                    return Result<void>::error(Status::WBAD_CHECKSUM,
+                        "Checksum validation failed");
+                }
+
+                // Extract state from buffer
+                core_state_.type = from_byte<Type>(buffer[Layout::TYPE]);
+                core_state_.can_version = from_byte<CANVersion>(buffer[Layout::CAN_VERS]);
+                config_state_.baud_rate = from_byte<CANBaud>(buffer[Layout::BAUD]);
+                config_state_.can_mode = from_byte<CANMode>(buffer[Layout::MODE]);
+                config_state_.auto_rtx = from_byte<RTX>(buffer[Layout::AUTO_RTX]);
+
+                // Extract filter (big-endian, 4 bytes)
+                config_state_.filter = bytes_to_int_be<std::uint32_t>(
+                    buffer.subspan(Layout::FILTER, 4)
+                );
+
+                // Extract mask (big-endian, 4 bytes)
+                config_state_.mask = bytes_to_int_be<std::uint32_t>(
+                    buffer.subspan(Layout::MASK, 4)
+                );
+
+                return Result<void>::success();
             }
 
             /**
-             * @brief Validate the frame contents.
-             * This method checks the integrity and correctness of the frame fields.
-             * @note A given buffer is a config frame if:
-             *
-             * - It has the correct fixed size (20 bytes).
-             *
-             * - The `START` byte is `Constants::START_BYTE`.
-             *
-             * - The `HEADER` byte is `Constants::HEADER`.
-             *
-             * - The `TYPE` byte is either `Type::CONF_FIXED` or `Type::CONF_VARIABLE`.
-             *
-             * - The `CAN_BAUD` byte is one of the supported baud rates.
-             *
-             * - The `CAN_MODE` byte is one of the supported CAN modes.
-             *
-             * - The `FILTER` and `MASK` values are compatible with the selected frame type.
-             *
-             * - The `RESERVED` bytes are all `Constants::RESERVED`.
-             *
-             * - The `CHECKSUM` byte matches the computed checksum.
-             *
-             * @see File: include/protocol.hpp for constant definitions.
-             * @see File: README.md for frame structure details.
-             * @see ChecksumInterface::compute_checksum() for checksum calculation.
-             *
-             * @param data The buffer to validate.
-             * @return Result<bool> indicating whether the frame is valid.
+             * @brief Get serialized size (always 20 bytes)
+             * @return std::size_t Size in bytes
              */
-            //Result<bool> impl_validate(span<const std::byte> data) const;
-            /**
-             * @brief Get the size of the frame in bytes.
-             *
-             * @return std::size_t The size of the frame in bytes.
-             */
-            std::size_t impl_size() const {
-                return traits_.FRAME_SIZE;
+            std::size_t impl_serialized_size() const {
+                return 20;
             }
 
-            // === ConfigFrame impl_*() Methods ===
-            /**
-             * @brief Get the type of the frame.
-             *
-             * @return `Type` The type of the frame.
-             */
-            Type impl_get_type() const;
-            /**
-             * @brief Set the type of the frame.
-             *
-             * @param type The type to set.
-             */
-            void impl_set_type(Type type);
-            /**
-             * @brief Get the CAN version of the frame.
-             *
-             * @return CANVersion The CAN version of the frame.
-             */
-            CANVersion impl_get_CAN_version() const;
-            /**
-             * @brief Set the CAN version of the frame.
-             *
-             * @param type The CAN version to set.
-             */
-            void impl_set_CAN_version(CANVersion ver);
+            // === State Access Implementations ===
 
-            // === Finalization ===
             /**
-             * @brief Finalize the frame before transmission.
-             * This method ensures the frame is ready to be sent, including checksum calculation.
-             * @note This calls ChecksumInterface::finalize() to compute and set the checksum.
+             * @brief Clear implementation - resets to defaults
              */
-            void finalize() {
-                checksum_interface_.update_checksum();
+            void impl_clear() {
+                core_state_.type = Type::CONF_FIXED;
+                core_state_.can_version = CANVersion::STD_FIXED;
+                config_state_ = ConfigState{};
             }
     };
 }

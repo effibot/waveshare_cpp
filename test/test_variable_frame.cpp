@@ -6,7 +6,20 @@
  * 1. Individual getter/setter pairs (ID, format, DLC, data)
  * 2. Constructor parameter validation
  * 3. Dynamic frame size handling (5-15 bytes)
- * 4. Type byte reconstruction (VarTypeInterface)
+ * 4.    SECTION("Type byte for extended ID, remote frame, DLC=2") {
+        std::vector<std::uint8_t> data = {0x00, 0x00};
+        VariableFrame ext_frame(
+            Format::REMOTE_VARIABLE,  // Format=1
+            CANVersion::EXT_VARIABLE,  // IsExt=1
+            0x78563412,  // uint32_t CAN ID
+            span<const std::uint8_t>(data.data(), 2) // 2 bytes of data (for DLC=2)
+        );
+
+        // TYPE byte = [0xC0 | IsExt(1) | Format(1) | DLC(2)]
+        // Expected: 0xC0 | 0x20 | 0x10 | 0x02 = 0xF2
+        auto storage = ext_frame.serialize();
+        REQUIRE(storage[1] == 0xF2);
+    }construction (VarTypeInterface)
  * 5. Round-trip serialization/deserialization
  * 6. Standard vs Extended ID with size changes
  *
@@ -71,45 +84,41 @@ TEST_CASE("VariableFrame - Default constructor initializes correctly", "[constru
     REQUIRE(frame.get_format() == Format::DATA_VARIABLE);
     REQUIRE(frame.is_extended() == false);  // STD_VARIABLE
     REQUIRE(frame.is_remote() == false);
-    REQUIRE(frame.size() >= 5);  // Minimum size
-    REQUIRE(frame.size() <= 15); // Maximum size
+    REQUIRE(frame.serialized_size() >= 5);  // Minimum size
+    REQUIRE(frame.serialized_size() <= 15); // Maximum size
 }
 
 TEST_CASE("VariableFrame - Parameterized constructor with standard ID", "[constructor]") {
-    std::vector<std::uint8_t> id_bytes = {0x01, 0x23};  // Standard ID (2 bytes)
     std::vector<std::uint8_t> data = {0xAA, 0xBB, 0xCC, 0xDD};
 
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::STD_VARIABLE,
-        id_bytes,
-        4,  // DLC
-        data
+        0x2301,  // CAN ID (uint32_t)
+        span<const std::uint8_t>(data.data(), 4)
     );
 
-    REQUIRE(frame.get_can_id() == 0x2301);  // Little-endian
+    REQUIRE(frame.get_can_id() == 0x2301);
     REQUIRE(frame.get_dlc() == 4);
     REQUIRE(frame.get_format() == Format::DATA_VARIABLE);
     REQUIRE(frame.is_extended() == false);
-    REQUIRE(frame.size() == 8);  // START + TYPE + ID(2) + DATA(4) + END = 8
+    REQUIRE(frame.serialized_size() == 8);  // START + TYPE + ID(2) + DATA(4) + END = 8
 }
 
 TEST_CASE("VariableFrame - Parameterized constructor with extended ID", "[constructor]") {
-    std::vector<std::uint8_t> id_bytes = {0x12, 0x34, 0x56, 0x78};  // Extended ID (4 bytes)
     std::vector<std::uint8_t> data = {0x11, 0x22};
 
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::EXT_VARIABLE,
-        id_bytes,
-        2,  // DLC
-        data
+        0x78563412,  // CAN ID (uint32_t)
+        span<const std::uint8_t>(data.data(), 2)
     );
 
-    REQUIRE(frame.get_can_id() == 0x78563412);  // Little-endian
+    REQUIRE(frame.get_can_id() == 0x78563412);
     REQUIRE(frame.get_dlc() == 2);
     REQUIRE(frame.is_extended() == true);
-    REQUIRE(frame.size() == 9);  // START + TYPE + ID(4) + DATA(2) + END = 9
+    REQUIRE(frame.serialized_size() == 9);  // START + TYPE + ID(4) + DATA(2) + END = 9
 }
 
 // ============================================================================
@@ -157,13 +166,13 @@ TEST_CASE("VariableFrame - Data getter/setter with size changes", "[getter][sett
     VariableFrame frame;
 
     SECTION("Set data changes frame size") {
-        size_t initial_size = frame.size();
+        size_t initial_size = frame.serialized_size();
 
         std::vector<std::uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0x05};
         frame.set_data(span<const std::uint8_t>(data.data(), 5));
 
         REQUIRE(frame.get_dlc() == 5);
-        size_t new_size = frame.size();
+        size_t new_size = frame.serialized_size();
         REQUIRE(new_size > initial_size);  // Size increased with data
     }
 
@@ -213,28 +222,26 @@ TEST_CASE("VariableFrame - Extended vs Standard ID affects frame size",
         VariableFrame std_frame(
             Format::DATA_VARIABLE,
             CANVersion::STD_VARIABLE,
-            {0x01, 0x23},
-            0,
-            {}
+            0x2301,  // uint32_t CAN ID
+            {}       // No data
         );
 
         REQUIRE(std_frame.is_extended() == false);
         // START(1) + TYPE(1) + ID(2) + DATA(0) + END(1) = 5 bytes
-        REQUIRE(std_frame.size() == 5);
+        REQUIRE(std_frame.serialized_size() == 5);
     }
 
     SECTION("Extended ID (4 bytes)") {
         VariableFrame ext_frame(
             Format::DATA_VARIABLE,
             CANVersion::EXT_VARIABLE,
-            {0x12, 0x34, 0x56, 0x78},
-            0,
-            {}
+            0x78563412,  // uint32_t CAN ID
+            {}           // No data
         );
 
         REQUIRE(ext_frame.is_extended() == true);
         // START(1) + TYPE(1) + ID(4) + DATA(0) + END(1) = 7 bytes
-        REQUIRE(ext_frame.size() == 7);
+        REQUIRE(ext_frame.serialized_size() == 7);
     }
 }
 
@@ -274,29 +281,25 @@ TEST_CASE("VariableFrame - Type byte encodes format, extension, and DLC", "[type
         frame.set_data(span<const std::uint8_t>(data.data(), 4));  // DLC=4
         // IsExtended should be false (STD_VARIABLE)
 
-        frame.finalize();
-
         // TYPE byte = [0xC0 | IsExt(0) | Format(0) | DLC(4)]
         // Expected: 0xC0 | 0x00 | 0x00 | 0x04 = 0xC4
-        const auto& storage = frame.get_storage();
+        auto storage = frame.serialize();
         REQUIRE(storage[1] == 0xC4);
     }
 
     SECTION("Type byte for extended ID, remote frame, DLC=2") {
+        std::vector<std::uint8_t> data = {0x00, 0x00};
         VariableFrame ext_frame(
             Format::REMOTE_VARIABLE,  // Format=1
             CANVersion::EXT_VARIABLE,  // IsExt=1
-            {0x12, 0x34, 0x56, 0x78},
-            2,
-            {}
+            0x78563412,  // uint32_t CAN ID
+            span<const std::uint8_t>(data.data(), 2) // 2 bytes of data (for DLC=2)
         );
 
-        ext_frame.finalize();
-
         // TYPE byte = [0xC0 | IsExt(1) | Format(1) | DLC(2)]
-        // Expected: 0xC0 | 0x10 | 0x08 | 0x02 = 0xDA
-        const auto& storage = ext_frame.get_storage();
-        REQUIRE(storage[1] == 0xDA);
+        // Expected: 0xC0 | 0x20 | 0x10 | 0x02 = 0xF2
+        auto storage = ext_frame.serialize();
+        REQUIRE(storage[1] == 0xF2);
     }
 }
 
@@ -308,18 +311,14 @@ TEST_CASE_METHOD(VariableFrameFixture,
     "VariableFrame - Round-trip from known standard ID frame dump",
     "[roundtrip][integration][std]") {
 
-    std::vector<std::uint8_t> id_bytes = {0x01, 0x23};
     std::vector<std::uint8_t> data = {0x11, 0x22, 0x33, 0x44};
 
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::STD_VARIABLE,
-        id_bytes,
-        4,
-        data
+        EXPECTED_STD_ID,  // 0x2301
+        span<const std::uint8_t>(data.data(), 4)
     );
-
-    frame.finalize();
 
     // Field verification
     REQUIRE(frame.get_can_id() == EXPECTED_STD_ID);
@@ -328,7 +327,7 @@ TEST_CASE_METHOD(VariableFrameFixture,
     REQUIRE(frame.is_extended() == false);
 
     // Byte-by-byte verification
-    const auto& storage = frame.get_storage();
+    auto storage = frame.serialize();
     REQUIRE(storage.size() == KNOWN_STD_FRAME_DUMP.size());
 
     for (size_t i = 0; i < storage.size(); ++i) {
@@ -341,18 +340,14 @@ TEST_CASE_METHOD(VariableFrameFixture,
     "VariableFrame - Round-trip from known extended ID frame dump",
     "[roundtrip][integration][ext]") {
 
-    std::vector<std::uint8_t> id_bytes = {0x12, 0x34, 0x56, 0x78};
     std::vector<std::uint8_t> data = {0xAA, 0xBB};
 
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::EXT_VARIABLE,
-        id_bytes,
-        2,
-        data
+        EXPECTED_EXT_ID,  // 0x78563412
+        span<const std::uint8_t>(data.data(), 2)
     );
-
-    frame.finalize();
 
     // Field verification
     REQUIRE(frame.get_can_id() == EXPECTED_EXT_ID);
@@ -360,7 +355,7 @@ TEST_CASE_METHOD(VariableFrameFixture,
     REQUIRE(frame.is_extended() == true);
 
     // Byte-by-byte verification
-    const auto& storage = frame.get_storage();
+    auto storage = frame.serialize();
     REQUIRE(storage.size() == KNOWN_EXT_FRAME_DUMP.size());
 
     for (size_t i = 0; i < storage.size(); ++i) {
@@ -377,14 +372,29 @@ TEST_CASE("VariableFrame - Serialize-deserialize round-trip preserves data",
     original.set_format(Format::DATA_VARIABLE);
     std::vector<std::uint8_t> data = {0xAA, 0xBB, 0xCC};
     original.set_data(span<const std::uint8_t>(data.data(), 3));
-    original.finalize();
 
-    const auto& serialized = original.get_storage();
-
-    // VariableFrame would need a from_bytes() method for true deserialization
-    // For now, verify we can extract fields correctly
+    // Serialize
+    auto serialized = original.serialize();
     REQUIRE(serialized[0] == 0xAA);  // START
     REQUIRE(serialized[serialized.size() - 1] == 0x55);  // END
+
+    // Deserialize into new frame
+    VariableFrame deserialized;
+    auto result = deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
+        serialized.size()));
+    REQUIRE(result.ok());
+
+    // Verify fields match
+    REQUIRE(deserialized.get_can_id() == original.get_can_id());
+    REQUIRE(deserialized.get_format() == original.get_format());
+    REQUIRE(deserialized.get_dlc() == original.get_dlc());
+
+    auto orig_data = original.get_data();
+    auto deser_data = deserialized.get_data();
+    REQUIRE(deser_data.size() == orig_data.size());
+    for (size_t i = 0; i < orig_data.size(); ++i) {
+        REQUIRE(deser_data[i] == orig_data[i]);
+    }
 }
 
 // ============================================================================
@@ -394,7 +404,7 @@ TEST_CASE("VariableFrame - Serialize-deserialize round-trip preserves data",
 TEST_CASE("VariableFrame - Frame size is dynamic (5-15 bytes)", "[size]") {
     VariableFrame frame;
 
-    size_t initial_size = frame.size();
+    size_t initial_size = frame.serialized_size();
     REQUIRE(initial_size >= 5);
     REQUIRE(initial_size <= 15);
 
@@ -402,7 +412,7 @@ TEST_CASE("VariableFrame - Frame size is dynamic (5-15 bytes)", "[size]") {
     std::vector<std::uint8_t> data = {0x11, 0x22, 0x33, 0x44, 0x55};
     frame.set_data(span<const std::uint8_t>(data.data(), 5));
 
-    size_t new_size = frame.size();
+    size_t new_size = frame.serialized_size();
     REQUIRE(new_size >= 5);
     REQUIRE(new_size <= 15);
     REQUIRE(new_size != initial_size);  // Size changed
@@ -413,25 +423,24 @@ TEST_CASE("VariableFrame - Minimum and maximum frame sizes", "[size][boundary]")
         VariableFrame min_frame(
             Format::DATA_VARIABLE,
             CANVersion::STD_VARIABLE,
-            {0x01, 0x23},
-            0,
-            {}
+            0x2301,  // uint32_t CAN ID
+            {}       // No data
         );
 
         // START + TYPE + ID(2) + END = 5 bytes (minimum)
-        REQUIRE(min_frame.size() == 5);
+        REQUIRE(min_frame.serialized_size() == 5);
     }
 
     SECTION("Maximum size: Extended ID, 8 bytes data") {
+        std::vector<std::uint8_t> max_data = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
         VariableFrame max_frame(
             Format::DATA_VARIABLE,
             CANVersion::EXT_VARIABLE,
-            {0x12, 0x34, 0x56, 0x78},
-            8,
-            {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
+            0x78563412,  // uint32_t CAN ID
+            span<const std::uint8_t>(max_data.data(), 8)
         );
 
         // START + TYPE + ID(4) + DATA(8) + END = 15 bytes (maximum)
-        REQUIRE(max_frame.size() == 15);
+        REQUIRE(max_frame.serialized_size() == 15);
     }
 }

@@ -2,10 +2,10 @@
  * @file test_fixed_frame.cpp
  * @brief Focused unit tests for FixedFrame class using Catch2
  *
- * Test Strategy:
+ * Test Strategy (State-First Architecture):
  * 1. Individual getter/setter pairs (ID, format, DLC, data)
  * 2. Constructor parameter validation
- * 3. Checksum integrity after modifications
+ * 3. Checksum integrity via serialization
  * 4. Round-trip serialization/deserialization
  * 5. Standard vs Extended ID handling
  *
@@ -15,8 +15,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "../include/frame/fixed_frame.hpp"
-#include "../include/interface/checksum.hpp"
+#include "../include/interface/serialization_helpers.hpp"
 #include <array>
+#include <vector>
 
 using namespace USBCANBridge;
 
@@ -78,19 +79,18 @@ TEST_CASE("FixedFrame - Default constructor initializes correctly", "[constructo
 }
 
 TEST_CASE("FixedFrame - Parameterized constructor sets all fields correctly", "[constructor]") {
-    // ID bytes in little-endian format (LSB first) for ID 0x12345678
-    std::array<std::uint8_t, 4> id_bytes = {0x78, 0x56, 0x34, 0x12};
-    std::array<std::uint8_t, 8> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    // Create test data
+    std::uint32_t test_id = 0x12345678;
+    std::vector<std::uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     FixedFrame frame(
         Format::DATA_FIXED,
         CANVersion::EXT_FIXED,
-        id_bytes,
-        8,  // DLC
-        data
+        test_id,
+        span<const std::uint8_t>(data.data(), data.size())
     );
 
-    REQUIRE(frame.get_can_id() == 0x12345678);  // Little-endian bytes: 78 56 34 12
+    REQUIRE(frame.get_can_id() == 0x12345678);
     REQUIRE(frame.get_dlc() == 8);
     REQUIRE(frame.get_format() == Format::DATA_FIXED);
     REQUIRE(frame.is_extended() == true);  // EXT_FIXED
@@ -189,15 +189,13 @@ TEST_CASE("FixedFrame - DLC automatically updates with data", "[getter][setter][
 }
 
 TEST_CASE("FixedFrame - Extended vs Standard ID detection", "[getter][setter][extended]") {
-    FixedFrame frame;
-
     SECTION("Standard ID frame") {
-        FixedFrame std_frame(Format::DATA_FIXED, CANVersion::STD_FIXED, {}, 0, {});
+        FixedFrame std_frame(Format::DATA_FIXED, CANVersion::STD_FIXED, 0x123);
         REQUIRE(std_frame.is_extended() == false);
     }
 
     SECTION("Extended ID frame") {
-        FixedFrame ext_frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, {}, 0, {});
+        FixedFrame ext_frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x12345678);
         REQUIRE(ext_frame.is_extended() == true);
     }
 }
@@ -229,60 +227,61 @@ TEST_CASE("FixedFrame - Field independence (setters don't interfere)",
 // CHECKSUM TESTS - Integrity and dirty bit behavior
 // ============================================================================
 
-TEST_CASE("FixedFrame - Checksum calculation matches standalone method",
+TEST_CASE("FixedFrame - Checksum calculation via serialization",
     "[checksum][integrity]") {
     FixedFrame frame;
 
     frame.set_id(0x123);
     std::array<std::uint8_t, 4> data = {0xAA, 0xBB, 0xCC, 0xDD};
     frame.set_data(span<const std::uint8_t>(data.data(), 4));
-    frame.finalize();
 
-    const auto& storage = frame.get_storage();
-    std::uint8_t static_checksum = ChecksumInterface<FixedFrame>::compute_checksum(storage);
+    // Serialize to get buffer with checksum
+    auto buffer = frame.serialize();
 
-    REQUIRE(ChecksumInterface<FixedFrame>::compute_checksum(storage) == static_checksum);
+    // Verify checksum is correct using ChecksumHelper
+    REQUIRE(buffer.size() == 20);
+    REQUIRE(ChecksumHelper::validate(buffer, 19, 2, 19) == true);
 }
 
 TEST_CASE("FixedFrame - Checksum updates after field modifications",
     "[checksum][dirty]") {
     FixedFrame frame;
 
-    frame.finalize();
-    std::uint8_t checksum1 = ChecksumInterface<FixedFrame>::compute_checksum(frame.get_storage());
+    auto buffer1 = frame.serialize();
+    std::uint8_t checksum1 = buffer1[19];
 
     // Modify field
     frame.set_id(0x456);
-    frame.finalize();
-    std::uint8_t checksum2 = ChecksumInterface<FixedFrame>::compute_checksum(frame.get_storage());
+    auto buffer2 = frame.serialize();
+    std::uint8_t checksum2 = buffer2[19];
 
     REQUIRE(checksum1 != checksum2);
 }
 
-TEST_CASE("FixedFrame - Checksum verification after finalize", "[checksum][verify]") {
+TEST_CASE("FixedFrame - Checksum verification via serialization", "[checksum][verify]") {
     FixedFrame frame;
 
     frame.set_id(0x123);
     std::array<std::uint8_t, 8> data = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
     frame.set_data(span<const std::uint8_t>(data.data(), 8));
-    frame.finalize();
 
-    REQUIRE(ChecksumInterface<FixedFrame>::verify_checksum(frame.get_storage()) == true);
+    auto buffer = frame.serialize();
+    REQUIRE(ChecksumHelper::validate(buffer, 19, 2, 19) == true);
 }
 
-TEST_CASE("FixedFrame - Static checksum methods work on external data",
+TEST_CASE("FixedFrame - Static checksum helper works on external data",
     "[checksum][static]") {
-    std::array<std::uint8_t, 20> data = {
+    std::vector<std::uint8_t> data = {
         0xAA, 0x55, 0x01, 0x01, 0x01,
         0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00  // Checksum placeholder
     };
 
-    std::uint8_t checksum = ChecksumInterface<FixedFrame>::compute_checksum(data);
+    std::uint8_t checksum = ChecksumHelper::compute(data, 2, 19);
     data[19] = checksum;
 
-    REQUIRE(ChecksumInterface<FixedFrame>::verify_checksum(data) == true);
+    REQUIRE(ChecksumHelper::validate(data, 19, 2, 19) == true);
 }
 
 // ============================================================================
@@ -292,19 +291,14 @@ TEST_CASE("FixedFrame - Static checksum methods work on external data",
 TEST_CASE_METHOD(FixedFrameFixture,
     "FixedFrame - Round-trip from known frame dump", "[roundtrip][integration]") {
 
-    // ID bytes in little-endian format (LSB first) for ID 0x123
-    std::array<std::uint8_t, 4> id_bytes = {0x23, 0x01, 0x00, 0x00};
     std::array<std::uint8_t, 8> data = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
 
     FixedFrame frame(
         EXPECTED_FORMAT,
         EXPECTED_VERSION,
-        id_bytes,
-        EXPECTED_DLC,
-        data
+        EXPECTED_ID,
+        span<const std::uint8_t>(data.data(), EXPECTED_DLC)
     );
-
-    frame.finalize();
 
     // Field-by-field verification
     REQUIRE(frame.get_can_id() == EXPECTED_ID);
@@ -316,15 +310,14 @@ TEST_CASE_METHOD(FixedFrameFixture,
         REQUIRE(frame_data[i] == EXPECTED_DATA[i]);
     }
 
-    // Verify checksum
-    REQUIRE(ChecksumInterface<FixedFrame>::compute_checksum(frame.get_storage()) ==
-        EXPECTED_CHECKSUM);
+    // Serialize and verify checksum
+    auto buffer = frame.serialize();
+    REQUIRE(buffer[19] == EXPECTED_CHECKSUM);
 
     // Byte-by-byte verification
-    const auto& storage = frame.get_storage();
     for (size_t i = 0; i < 20; ++i) {
         INFO("Byte index: " << i);
-        REQUIRE(storage[i] == KNOWN_FRAME_DUMP[i]);
+        REQUIRE(buffer[i] == KNOWN_FRAME_DUMP[i]);
     }
 }
 
@@ -336,32 +329,24 @@ TEST_CASE("FixedFrame - Serialize-deserialize round-trip preserves data",
     original.set_format(Format::DATA_FIXED);
     std::array<std::uint8_t, 8> data = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22};
     original.set_data(span<const std::uint8_t>(data.data(), 8));
-    original.finalize();
 
-    const auto& serialized = original.get_storage();
+    // Serialize
+    const auto serialized = original.serialize();
 
-    // Extract bytes for reconstruction
-    std::array<std::uint8_t, 4> id_bytes = {
-        serialized[5], serialized[6], serialized[7], serialized[8]
-    };
-    std::array<std::uint8_t, 8> data_bytes;
-    std::copy(serialized.begin() + 10, serialized.begin() + 18, data_bytes.begin());
+    // Deserialize into new frame
+    FixedFrame deserialized;
+    auto result = deserialized.deserialize(serialized);
 
-    FixedFrame deserialized(
-        Format::DATA_FIXED,
-        CANVersion::STD_FIXED,
-        id_bytes,
-        8,
-        data_bytes
-    );
-    deserialized.finalize();
+    REQUIRE(result.ok());
 
     // Verify all fields match
     REQUIRE(deserialized.get_can_id() == original.get_can_id());
     REQUIRE(deserialized.get_dlc() == original.get_dlc());
     REQUIRE(deserialized.get_format() == original.get_format());
-    REQUIRE(ChecksumInterface<FixedFrame>::compute_checksum(deserialized.get_storage()) ==
-        ChecksumInterface<FixedFrame>::compute_checksum(original.get_storage()));
+
+    // Verify checksums match
+    auto deserialized_buffer = deserialized.serialize();
+    REQUIRE(deserialized_buffer[19] == serialized[19]);
 }
 
 // ============================================================================

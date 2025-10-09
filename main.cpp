@@ -1,49 +1,55 @@
-#include "include/pattern/frame_builder.hpp"
+#include "include/frame/fixed_frame.hpp"
+#include "include/frame/variable_frame.hpp"
+#include "include/frame/config_frame.hpp"
 
 #include <stddef.h>
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using namespace USBCANBridge;
-int main() {
-    std::array<std::uint8_t, 4> filter = {0x00, 0x00, 0x07, 0xFF};
-    std::array<std::uint8_t, 4> mask = {0x00, 0x00, 0x07, 0xFF};
-    FrameBuilder<ConfigFrame> builder;
-    ConfigFrame frame = builder
-        .type(Type::CONF_VARIABLE)
-        .baud_rate(CANBaud::BAUD_1M)
-        .mode(CANMode::NORMAL)
-        .filter(filter)
-        .mask(mask)
-        .rtx(RTX::AUTO)
-        .can_version(CANVersion::STD_FIXED)
-        .finalize()
-        .build();
 
-    std::string frame_dump = frame.to_string();
-    std::cout << frame_dump << std::endl;
+int main() {
+    // Create a ConfigFrame using the new constructor
+    ConfigFrame config_frame(
+        Type::CONF_VARIABLE,
+        CANBaud::BAUD_1M,
+        CANMode::NORMAL,
+        RTX::AUTO,
+        0x000007FF,  // filter (uint32_t)
+        0x000007FF,  // mask (uint32_t)
+        CANVersion::STD_FIXED
+    );
+
+    std::cout << "ConfigFrame:" << std::endl;
+    std::cout << config_frame.to_string() << std::endl;
     std::cout << "----" << std::endl;
 
-    FrameBuilder<FixedFrame> fixed_builder;
-    FixedFrame fixed_frame = fixed_builder
-        .type(Type::DATA_FIXED)
-        .can_version(CANVersion::STD_FIXED)
-        .format(Format::DATA_FIXED)
-        .id(0x123)
-        .data({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
-        .finalize()
-        .build();
+    // Create a FixedFrame using the new constructor
+    std::vector<std::uint8_t> data = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    FixedFrame fixed_frame(
+        Format::DATA_FIXED,
+        CANVersion::STD_FIXED,
+        0x123,  // CAN ID (uint32_t)
+        span<const std::uint8_t>(data.data(), 8)
+    );
 
+    std::cout << "FixedFrame:" << std::endl;
     std::cout << fixed_frame.to_string() << std::endl;
     std::cout << "----" << std::endl;
 
-    FrameBuilder<VariableFrame> var_builder;
-    // VariableFrame var_frame = var_builder
-    //     .type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
-    //     .id(0x1ABCDE)
-    //     .data({0xDE, 0xAD, 0xBE, 0xEF})
-    //     .finalize()
-    //     .build();
+    // Create a VariableFrame using the new constructor
+    std::vector<std::uint8_t> var_data = {0xDE, 0xAD, 0xBE, 0xEF};
+    VariableFrame var_frame(
+        Format::DATA_VARIABLE,
+        CANVersion::EXT_VARIABLE,
+        0x1ABCDE,  // CAN ID (uint32_t)
+        span<const std::uint8_t>(var_data.data(), 4)
+    );
+
+    std::cout << "VariableFrame:" << std::endl;
+    std::cout << var_frame.to_string() << std::endl;
+
     return 0;
 }
