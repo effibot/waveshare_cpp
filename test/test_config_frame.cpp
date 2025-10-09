@@ -92,7 +92,7 @@ TEST_CASE("ConfigFrame - Parameterized constructor sets all fields correctly",
         CANMode::LOOPBACK
     );
 
-    REQUIRE(frame.get_type() == Type::CONF_FIXED);
+    REQUIRE(frame.get_type() == Type::CONF_VARIABLE);
     REQUIRE(frame.get_filter() == 0x12345678);
     REQUIRE(frame.get_mask() == 0x0007FFFF);
     REQUIRE(frame.get_auto_rtx() == RTX::OFF);
