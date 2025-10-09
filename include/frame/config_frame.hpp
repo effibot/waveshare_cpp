@@ -148,7 +148,7 @@ namespace USBCANBridge {
             /**
              * @brief Get the type of the frame.
              *
-             * @return Type The type of the frame.
+             * @return `Type` The type of the frame.
              */
             Type impl_get_type() const;
             /**

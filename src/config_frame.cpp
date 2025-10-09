@@ -15,6 +15,7 @@
 namespace USBCANBridge {
 
     // === ConfigFrame impl_*() Methods ===
+
     Type ConfigFrame::impl_get_type() const {
         std::uint8_t frame_type = frame_storage_[layout_.TYPE];
         return from_byte<Type>(frame_type);

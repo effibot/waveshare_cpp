@@ -39,11 +39,11 @@ int main() {
     std::cout << "----" << std::endl;
 
     FrameBuilder<VariableFrame> var_builder;
-    VariableFrame var_frame = var_builder
-        .type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
-        .id(0x1ABCDE)
-        .data({0xDE, 0xAD, 0xBE, 0xEF})
-        .finalize()
-        .build();
+    // VariableFrame var_frame = var_builder
+    //     .type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
+    //     .id(0x1ABCDE)
+    //     .data({0xDE, 0xAD, 0xBE, 0xEF})
+    //     .finalize()
+    //     .build();
     return 0;
 }
