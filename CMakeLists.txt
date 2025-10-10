@@ -13,15 +13,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter -Wno-unused-variable -O2)
 endif()
 
-
-
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 # Add option to build tests
 option(BUILD_TESTS "Build tests" ON)
-# Add option for code coverage
-option(CODE_COVERAGE "Enable code coverage support" OFF)
 
 # Add source files from the main project
 add_subdirectory(src)
@@ -34,16 +30,6 @@ target_link_libraries(main PRIVATE waveshare_cpp)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
-endif()
-# Code coverage settings
-if(CODE_COVERAGE)
-    message(STATUS "Code coverage enabled")
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        add_compile_options(-O0 -g --coverage)
-        add_link_options(--coverage)
-    else()
-        message(WARNING "Code coverage not supported on this compiler")
-    endif()
 endif()
 
 

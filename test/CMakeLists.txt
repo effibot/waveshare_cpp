@@ -1,3 +1,5 @@
+include(CTest)
+
 # Find or fetch Catch2
 find_package(Catch2 3 QUIET)
 

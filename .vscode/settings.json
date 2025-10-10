@@ -123,4 +123,7 @@
     // --function-arg-placeholders     - When disabled, completions contain only parentheses for function calls. When enabled, completions also contain placeholders for method parameters
     "--function-arg-placeholders=true",
   ],
+  "cmake.coverageInfoFiles": [
+    "${workspaceFolder}/coverage.info"
+  ]
 }

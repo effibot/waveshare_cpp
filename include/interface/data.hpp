@@ -174,8 +174,16 @@ namespace USBCANBridge {
             /**
              * @brief Set the data payload and update DLC accordingly
              * @param data A span representing the data payload to set
+             * @throws std::out_of_range if data size exceeds MAX_DATA_LENGTH (8 bytes)
              */
             void set_data(span<const std::uint8_t> data) {
+                // Validate data size
+                if (data.size() > MAX_DATA_LENGTH) {
+                    throw std::out_of_range(
+                        "Data size exceeds maximum (8 bytes): " +
+                        std::to_string(data.size()));
+                }
+
                 // Resize data vector and copy
                 data_state_.data.resize(data.size());
                 std::copy(data.begin(), data.end(), data_state_.data.begin());

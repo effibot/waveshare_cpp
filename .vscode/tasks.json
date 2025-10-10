@@ -11,8 +11,7 @@
                 "Debug",
                 "--target",
                 "all",
-                "-j",
-                "8"
+                "--parallel",
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -69,7 +68,7 @@
                 "cwd": "${workspaceFolder}"
             },
             "problemMatcher": []
-        }
+        },
     ],
     "version": "2.0.0"
 }
