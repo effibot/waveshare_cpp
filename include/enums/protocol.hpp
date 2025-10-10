@@ -23,7 +23,7 @@
 #include <iomanip>
 #include <array>
 #include <boost/core/span.hpp>
-
+#include <termios.h>
 using namespace boost;
 
 /**
@@ -217,13 +217,13 @@ namespace USBCANBridge {
      * - 1.2288 Mbps and 2 Mbps: Very high speeds, may require quality cables and
      *   short distances
      */
-    enum class SerialBaud : std::uint32_t {
+    enum class SerialBaud : speed_t {
         BAUD_9600 = 9600,
         BAUD_19200 = 19200,
         BAUD_38400 = 38400,
         BAUD_57600 = 57600,
         BAUD_115200 = 115200,
-        BAUD_1228800 = 1228800,
+        BAUD_153600 = 153600,
         BAUD_2M = 2000000   // <<< Recommended
     };
     // * Define default Serial baud rate
@@ -280,6 +280,43 @@ namespace USBCANBridge {
     template<typename EnumType> constexpr EnumType from_byte(std::uint8_t value) {
         return static_cast<EnumType>(
             static_cast<std::underlying_type_t<EnumType> >(value));
+    }
+
+    /**
+     * @brief Converts SerialBaud enum to speed_t.
+     *
+     * @param baud The SerialBaud enum value
+     * @return speed_t The corresponding speed_t value
+     */
+    constexpr speed_t to_speed_t(SerialBaud baud) {
+        switch (baud) {
+        case SerialBaud::BAUD_9600:   return B9600;
+        case SerialBaud::BAUD_19200:  return B19200;
+        case SerialBaud::BAUD_38400:  return B38400;
+        case SerialBaud::BAUD_57600:  return B57600;
+        case SerialBaud::BAUD_115200: return B115200;
+        case SerialBaud::BAUD_153600: return B153600;
+        case SerialBaud::BAUD_2M:     return B2000000;
+        default:                      return B2000000;     // <<< Default to 2M
+        }
+    }
+
+    /**
+     * @brief Get the SerialBaud enum from speed_t.
+     * @param speed The speed_t value
+     * @return SerialBaud The corresponding SerialBaud enum value
+     */
+    constexpr SerialBaud from_speed_t(speed_t speed) {
+        switch (speed) {
+        case B9600:     return SerialBaud::BAUD_9600;
+        case B19200:    return SerialBaud::BAUD_19200;
+        case B38400:    return SerialBaud::BAUD_38400;
+        case B57600:    return SerialBaud::BAUD_57600;
+        case B115200:   return SerialBaud::BAUD_115200;
+        case B153600:  return SerialBaud::BAUD_153600;
+        case B2000000:  return SerialBaud::BAUD_2M;
+        default:         return SerialBaud::BAUD_2M;   // <<< Default to 2M
+        }
     }
 
     // === Byte Manipulation Helpers ===
