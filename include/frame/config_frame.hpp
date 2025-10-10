@@ -34,8 +34,10 @@ namespace USBCANBridge {
      */
     class ConfigFrame : public ConfigInterface<ConfigFrame> {
         private:
+            // Trait specialization ensures correct Layout
+            using Traits = traits_t<ConfigFrame>;
             // Layout type alias
-            using Layout = FrameTraits<ConfigFrame>::Layout;
+            using Layout = Traits::Layout;
 
         public:
             // === Constructors ===
@@ -43,6 +45,13 @@ namespace USBCANBridge {
             /**
              * @brief Default constructor
              * Creates a ConfigFrame with default configuration values
+             * - Type: CONF_FIXED
+             * - CAN Version: STD_FIXED
+             * - Baud Rate: 1Mbps
+             * - CAN Mode: NORMAL
+             * - Auto Retransmission: AUTO
+             * - Filter: 0x00000000
+             * - Mask: 0x00000000
              */
             ConfigFrame() : ConfigInterface<ConfigFrame>() {
                 // Set default core state
@@ -91,96 +100,21 @@ namespace USBCANBridge {
              * @brief Serialize frame state to 20-byte buffer
              * @return std::vector<std::uint8_t> 20-byte buffer with checksum
              */
-            std::vector<std::uint8_t> impl_serialize() const {
-                std::vector<std::uint8_t> buffer(20, 0x00);
-
-                // Fixed protocol bytes
-                buffer[Layout::START] = to_byte(Constants::START_BYTE);
-                buffer[Layout::HEADER] = to_byte(Constants::HEADER);
-                buffer[Layout::TYPE] = to_byte(core_state_.type);
-
-                // Configuration bytes
-                buffer[Layout::BAUD] = to_byte(config_state_.baud_rate);
-                buffer[Layout::CAN_VERS] = to_byte(core_state_.can_version);
-
-                // Filter (big-endian, 4 bytes)
-                auto filter_bytes = int_to_bytes_be<std::uint32_t, 4>(config_state_.filter);
-                std::copy(filter_bytes.begin(), filter_bytes.end(),
-                    buffer.begin() + Layout::FILTER);
-
-                // Mask (big-endian, 4 bytes)
-                auto mask_bytes = int_to_bytes_be<std::uint32_t, 4>(config_state_.mask);
-                std::copy(mask_bytes.begin(), mask_bytes.end(), buffer.begin() + Layout::MASK);
-
-                buffer[Layout::MODE] = to_byte(config_state_.can_mode);
-                buffer[Layout::AUTO_RTX] = to_byte(config_state_.auto_rtx);
-
-                // Reserved bytes (4 bytes, all 0x00)
-                for (size_t i = 0; i < 4; ++i) {
-                    buffer[Layout::RESERVED + i] = to_byte(Constants::RESERVED);
-                }
-
-                // Compute and write checksum
-                ChecksumHelper::write(buffer, Layout::CHECKSUM, Layout::TYPE, Layout::RESERVED + 3);
-
-                return buffer;
-            }
+            std::vector<std::uint8_t> impl_serialize() const;
 
             /**
              * @brief Deserialize byte buffer into frame state
              * @param buffer Input buffer to parse (must be 20 bytes)
              * @return Result<void> Success or error status
              */
-            Result<void> impl_deserialize(span<const std::uint8_t> buffer) {
-                if (buffer.size() != 20) {
-                    return Result<void>::error(Status::WBAD_LENGTH,
-                        "ConfigFrame requires exactly 20 bytes");
-                }
-
-                // Validate fixed protocol bytes
-                if (buffer[Layout::START] != to_byte(Constants::START_BYTE)) {
-                    return Result<void>::error(Status::WBAD_FORMAT,
-                        "Invalid START byte");
-                }
-
-                if (buffer[Layout::HEADER] != to_byte(Constants::HEADER)) {
-                    return Result<void>::error(Status::WBAD_FORMAT,
-                        "Invalid HEADER byte");
-                }
-
-                // Validate checksum
-                if (!ChecksumHelper::validate(buffer, Layout::CHECKSUM, Layout::TYPE,
-                    Layout::RESERVED + 3)) {
-                    return Result<void>::error(Status::WBAD_CHECKSUM,
-                        "Checksum validation failed");
-                }
-
-                // Extract state from buffer
-                core_state_.type = from_byte<Type>(buffer[Layout::TYPE]);
-                core_state_.can_version = from_byte<CANVersion>(buffer[Layout::CAN_VERS]);
-                config_state_.baud_rate = from_byte<CANBaud>(buffer[Layout::BAUD]);
-                config_state_.can_mode = from_byte<CANMode>(buffer[Layout::MODE]);
-                config_state_.auto_rtx = from_byte<RTX>(buffer[Layout::AUTO_RTX]);
-
-                // Extract filter (big-endian, 4 bytes)
-                config_state_.filter = bytes_to_int_be<std::uint32_t>(
-                    buffer.subspan(Layout::FILTER, 4)
-                );
-
-                // Extract mask (big-endian, 4 bytes)
-                config_state_.mask = bytes_to_int_be<std::uint32_t>(
-                    buffer.subspan(Layout::MASK, 4)
-                );
-
-                return Result<void>::success();
-            }
+            Result<void> impl_deserialize(span<const std::uint8_t> buffer);
 
             /**
              * @brief Get serialized size (always 20 bytes)
              * @return std::size_t Size in bytes
              */
             std::size_t impl_serialized_size() const {
-                return 20;
+                return Traits::FRAME_SIZE;
             }
 
             // === State Access Implementations ===

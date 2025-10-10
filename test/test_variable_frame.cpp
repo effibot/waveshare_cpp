@@ -40,12 +40,12 @@ using namespace USBCANBridge;
 struct VariableFrameFixture {
     // Predefined frame dump - variable size (5-15 bytes)
     // Standard ID (2 bytes) + 4 data bytes = 8 bytes total
-    // AA C4 01 23 11 22 33 44 55
+    // AA C4 01 02 11 22 33 44 55
     static constexpr std::array<std::uint8_t, 9> KNOWN_STD_FRAME_DUMP = {
         0xAA,  // [0] START
         0xC4,  // [1] TYPE (IsExt=0, Format=0, DLC=4)
         0x01,  // [2] ID[0] (little-endian)
-        0x23,  // [3] ID[1]
+        0x02,  // [3] ID[1]
         0x11,  // [4] DATA[0]
         0x22,  // [5] DATA[1]
         0x33,  // [6] DATA[2]
@@ -54,21 +54,21 @@ struct VariableFrameFixture {
     };
 
     // Extended ID (4 bytes) + 2 data bytes = 9 bytes total
-    // AA D2 12 34 56 78 AA BB 55
+    // AA E2 12 34 56 18 AA BB 55
     static constexpr std::array<std::uint8_t, 9> KNOWN_EXT_FRAME_DUMP = {
         0xAA,  // [0] START
-        0xD2,  // [1] TYPE (IsExt=1, Format=0, DLC=2)
+        0xE2,  // [1] TYPE (IsExt=1, Format=0, DLC=2)
         0x12,  // [2] ID[0] (little-endian)
         0x34,  // [3] ID[1]
         0x56,  // [4] ID[2]
-        0x78,  // [5] ID[3]
+        0x18,  // [5] ID[3]
         0xAA,  // [6] DATA[0]
         0xBB,  // [7] DATA[1]
         0x55   // [8] END
     };
 
-    static constexpr uint32_t EXPECTED_STD_ID = 0x2301;      // Little-endian: 01 23
-    static constexpr uint32_t EXPECTED_EXT_ID = 0x78563412;  // Little-endian: 12 34 56 78
+    static constexpr uint32_t EXPECTED_STD_ID = 0x0201;      // Little-endian: 01 02 (valid 11-bit)
+    static constexpr uint32_t EXPECTED_EXT_ID = 0x18563412;  // Little-endian: 12 34 56 18 (valid 29-bit)
 };
 
 // ============================================================================
@@ -94,15 +94,15 @@ TEST_CASE("VariableFrame - Parameterized constructor with standard ID", "[constr
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::STD_VARIABLE,
-        0x2301,  // CAN ID (uint32_t)
+        0x301,  // CAN ID (uint32_t) - valid 11-bit ID
         span<const std::uint8_t>(data.data(), 4)
     );
 
-    REQUIRE(frame.get_can_id() == 0x2301);
+    REQUIRE(frame.get_can_id() == 0x301);
     REQUIRE(frame.get_dlc() == 4);
     REQUIRE(frame.get_format() == Format::DATA_VARIABLE);
     REQUIRE(frame.is_extended() == false);
-    REQUIRE(frame.serialized_size() == 8);  // START + TYPE + ID(2) + DATA(4) + END = 8
+    REQUIRE(frame.serialized_size() == 9);  // START + TYPE + ID(2) + DATA(4) + END = 9
 }
 
 TEST_CASE("VariableFrame - Parameterized constructor with extended ID", "[constructor]") {
@@ -111,11 +111,11 @@ TEST_CASE("VariableFrame - Parameterized constructor with extended ID", "[constr
     VariableFrame frame(
         Format::DATA_VARIABLE,
         CANVersion::EXT_VARIABLE,
-        0x78563412,  // CAN ID (uint32_t)
+        0x18563412,  // CAN ID (uint32_t) - valid 29-bit ID
         span<const std::uint8_t>(data.data(), 2)
     );
 
-    REQUIRE(frame.get_can_id() == 0x78563412);
+    REQUIRE(frame.get_can_id() == 0x18563412);
     REQUIRE(frame.get_dlc() == 2);
     REQUIRE(frame.is_extended() == true);
     REQUIRE(frame.serialized_size() == 9);  // START + TYPE + ID(4) + DATA(2) + END = 9
@@ -126,9 +126,8 @@ TEST_CASE("VariableFrame - Parameterized constructor with extended ID", "[constr
 // ============================================================================
 
 TEST_CASE("VariableFrame - CAN ID getter/setter round-trip", "[getter][setter][id]") {
-    VariableFrame frame;
-
     SECTION("Standard CAN ID boundaries") {
+        VariableFrame frame;  // Default is STD_VARIABLE
         frame.set_id(0x000);
         REQUIRE(frame.get_can_id() == 0x000);
 
@@ -137,6 +136,7 @@ TEST_CASE("VariableFrame - CAN ID getter/setter round-trip", "[getter][setter][i
     }
 
     SECTION("Extended CAN ID boundaries") {
+        VariableFrame frame(Format::DATA_VARIABLE, CANVersion::EXT_VARIABLE, 0x00000000);
         frame.set_id(0x00000000);
         REQUIRE(frame.get_can_id() == 0x00000000);
 
@@ -145,6 +145,7 @@ TEST_CASE("VariableFrame - CAN ID getter/setter round-trip", "[getter][setter][i
     }
 
     SECTION("ID with endianness preservation") {
+        VariableFrame frame(Format::DATA_VARIABLE, CANVersion::EXT_VARIABLE, 0x00000000);
         frame.set_id(0x12345678);
         REQUIRE(frame.get_can_id() == 0x12345678);
     }
@@ -222,7 +223,7 @@ TEST_CASE("VariableFrame - Extended vs Standard ID affects frame size",
         VariableFrame std_frame(
             Format::DATA_VARIABLE,
             CANVersion::STD_VARIABLE,
-            0x2301,  // uint32_t CAN ID
+            0x0201,  // uint32_t CAN ID - valid 11-bit ID
             {}       // No data
         );
 
@@ -235,7 +236,7 @@ TEST_CASE("VariableFrame - Extended vs Standard ID affects frame size",
         VariableFrame ext_frame(
             Format::DATA_VARIABLE,
             CANVersion::EXT_VARIABLE,
-            0x78563412,  // uint32_t CAN ID
+            0x18563412,  // uint32_t CAN ID - valid 29-bit ID
             {}           // No data
         );
 
@@ -245,9 +246,59 @@ TEST_CASE("VariableFrame - Extended vs Standard ID affects frame size",
     }
 }
 
+TEST_CASE("VariableFrame - set_id validates ID against CAN version",
+    "[setter][validation][id]") {
+
+    SECTION("Standard ID frame - valid IDs accepted") {
+        VariableFrame std_frame(Format::DATA_VARIABLE, CANVersion::STD_VARIABLE, 0x000);
+
+        // Should accept valid standard IDs (0x000 to 0x7FF)
+        REQUIRE_NOTHROW(std_frame.set_id(0x000));
+        REQUIRE_NOTHROW(std_frame.set_id(0x7FF));
+        REQUIRE_NOTHROW(std_frame.set_id(0x400));
+
+        REQUIRE(std_frame.get_can_id() == 0x400);
+    }
+
+    SECTION("Standard ID frame - invalid IDs rejected") {
+        VariableFrame std_frame(Format::DATA_VARIABLE, CANVersion::STD_VARIABLE, 0x000);
+
+        // Should reject IDs > 0x7FF (11-bit max)
+        REQUIRE_THROWS_AS(std_frame.set_id(0x800), std::out_of_range);
+        REQUIRE_THROWS_AS(std_frame.set_id(0xFFF), std::out_of_range);
+        REQUIRE_THROWS_AS(std_frame.set_id(0x12345678), std::out_of_range);
+
+        // Verify ID unchanged after exception
+        REQUIRE(std_frame.get_can_id() == 0x000);
+    }
+
+    SECTION("Extended ID frame - valid IDs accepted") {
+        VariableFrame ext_frame(Format::DATA_VARIABLE, CANVersion::EXT_VARIABLE, 0x00000000);
+
+        // Should accept valid extended IDs (0x00000000 to 0x1FFFFFFF)
+        REQUIRE_NOTHROW(ext_frame.set_id(0x00000000));
+        REQUIRE_NOTHROW(ext_frame.set_id(0x1FFFFFFF));
+        REQUIRE_NOTHROW(ext_frame.set_id(0x12345678));
+
+        REQUIRE(ext_frame.get_can_id() == 0x12345678);
+    }
+
+    SECTION("Extended ID frame - invalid IDs rejected") {
+        VariableFrame ext_frame(Format::DATA_VARIABLE, CANVersion::EXT_VARIABLE, 0x00000000);
+
+        // Should reject IDs > 0x1FFFFFFF (29-bit max)
+        REQUIRE_THROWS_AS(ext_frame.set_id(0x20000000), std::out_of_range);
+        REQUIRE_THROWS_AS(ext_frame.set_id(0xFFFFFFFF), std::out_of_range);
+
+        // Verify ID unchanged after exception
+        REQUIRE(ext_frame.get_can_id() == 0x00000000);
+    }
+}
+
 TEST_CASE("VariableFrame - Field independence (setters don't interfere)",
     "[getter][setter][independence]") {
-    VariableFrame frame;
+    // Use extended frame to allow large ID values
+    VariableFrame frame(Format::DATA_VARIABLE, CANVersion::EXT_VARIABLE, 0x00000000);
 
     // Set all fields
     frame.set_id(0x12345678);
@@ -261,7 +312,7 @@ TEST_CASE("VariableFrame - Field independence (setters don't interfere)",
     REQUIRE(frame.get_dlc() == 4);
 
     // Change one field
-    frame.set_id(0xAABBCCDD);
+    frame.set_id(0x1ABBCCDD);
 
     // Verify others unchanged
     REQUIRE(frame.get_format() == Format::DATA_VARIABLE);
@@ -292,7 +343,7 @@ TEST_CASE("VariableFrame - Type byte encodes format, extension, and DLC", "[type
         VariableFrame ext_frame(
             Format::REMOTE_VARIABLE,  // Format=1
             CANVersion::EXT_VARIABLE,  // IsExt=1
-            0x78563412,  // uint32_t CAN ID
+            0x18563412,  // uint32_t CAN ID - valid 29-bit ID
             span<const std::uint8_t>(data.data(), 2) // 2 bytes of data (for DLC=2)
         );
 
@@ -348,6 +399,8 @@ TEST_CASE_METHOD(VariableFrameFixture,
         EXPECTED_EXT_ID,  // 0x78563412
         span<const std::uint8_t>(data.data(), 2)
     );
+    INFO("Serialized size: " << frame.serialized_size());
+
 
     // Field verification
     REQUIRE(frame.get_can_id() == EXPECTED_EXT_ID);
@@ -356,6 +409,7 @@ TEST_CASE_METHOD(VariableFrameFixture,
 
     // Byte-by-byte verification
     auto storage = frame.serialize();
+    INFO("Serialized Frame: " << frame.to_string());
     REQUIRE(storage.size() == KNOWN_EXT_FRAME_DUMP.size());
 
     for (size_t i = 0; i < storage.size(); ++i) {
@@ -368,7 +422,8 @@ TEST_CASE("VariableFrame - Serialize-deserialize round-trip preserves data",
     "[roundtrip][serialize]") {
 
     VariableFrame original;
-    original.set_id(0xABCDEF12);
+    original.set_CAN_version(CANVersion::EXT_VARIABLE);
+    original.set_id(0x1BCDEF12);
     original.set_format(Format::DATA_VARIABLE);
     std::vector<std::uint8_t> data = {0xAA, 0xBB, 0xCC};
     original.set_data(span<const std::uint8_t>(data.data(), 3));
@@ -377,13 +432,13 @@ TEST_CASE("VariableFrame - Serialize-deserialize round-trip preserves data",
     auto serialized = original.serialize();
     REQUIRE(serialized[0] == 0xAA);  // START
     REQUIRE(serialized[serialized.size() - 1] == 0x55);  // END
-
+    INFO("Serialized Frame: " << original.to_string());
     // Deserialize into new frame
     VariableFrame deserialized;
     auto result = deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
         serialized.size()));
     REQUIRE(result.ok());
-
+    INFO("Deserialized Frame: " << deserialized.to_string());
     // Verify fields match
     REQUIRE(deserialized.get_can_id() == original.get_can_id());
     REQUIRE(deserialized.get_format() == original.get_format());
@@ -423,7 +478,7 @@ TEST_CASE("VariableFrame - Minimum and maximum frame sizes", "[size][boundary]")
         VariableFrame min_frame(
             Format::DATA_VARIABLE,
             CANVersion::STD_VARIABLE,
-            0x2301,  // uint32_t CAN ID
+            0x0201,  // uint32_t CAN ID - valid 11-bit ID
             {}       // No data
         );
 
@@ -436,7 +491,7 @@ TEST_CASE("VariableFrame - Minimum and maximum frame sizes", "[size][boundary]")
         VariableFrame max_frame(
             Format::DATA_VARIABLE,
             CANVersion::EXT_VARIABLE,
-            0x78563412,  // uint32_t CAN ID
+            0x18563412,  // uint32_t CAN ID - valid 29-bit ID
             span<const std::uint8_t>(max_data.data(), 8)
         );
 

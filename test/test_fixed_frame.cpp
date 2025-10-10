@@ -106,9 +106,8 @@ TEST_CASE("FixedFrame - Parameterized constructor sets all fields correctly", "[
 // ============================================================================
 
 TEST_CASE("FixedFrame - CAN ID getter/setter round-trip", "[getter][setter][id]") {
-    FixedFrame frame;
-
     SECTION("Standard CAN ID boundaries") {
+        FixedFrame frame;  // Default is STD_FIXED
         frame.set_id(0x000);
         REQUIRE(frame.get_can_id() == 0x000);
 
@@ -117,6 +116,7 @@ TEST_CASE("FixedFrame - CAN ID getter/setter round-trip", "[getter][setter][id]"
     }
 
     SECTION("Extended CAN ID boundaries") {
+        FixedFrame frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x00000000);
         frame.set_id(0x00000000);
         REQUIRE(frame.get_can_id() == 0x00000000);
 
@@ -125,11 +125,12 @@ TEST_CASE("FixedFrame - CAN ID getter/setter round-trip", "[getter][setter][id]"
     }
 
     SECTION("Arbitrary ID with endianness preservation") {
+        FixedFrame frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x00000000);
         frame.set_id(0x12345678);
         REQUIRE(frame.get_can_id() == 0x12345678);
 
-        frame.set_id(0xAABBCCDD);
-        REQUIRE(frame.get_can_id() == 0xAABBCCDD);
+        frame.set_id(0x1ABBCCDD);
+        REQUIRE(frame.get_can_id() == 0x1ABBCCDD);
     }
 }
 
@@ -200,9 +201,57 @@ TEST_CASE("FixedFrame - Extended vs Standard ID detection", "[getter][setter][ex
     }
 }
 
+TEST_CASE("FixedFrame - set_id validates ID against CAN version", "[setter][validation][id]") {
+    SECTION("Standard ID frame - valid IDs accepted") {
+        FixedFrame std_frame(Format::DATA_FIXED, CANVersion::STD_FIXED, 0x000);
+
+        // Should accept valid standard IDs (0x000 to 0x7FF)
+        REQUIRE_NOTHROW(std_frame.set_id(0x000));
+        REQUIRE_NOTHROW(std_frame.set_id(0x7FF));
+        REQUIRE_NOTHROW(std_frame.set_id(0x400));
+
+        REQUIRE(std_frame.get_can_id() == 0x400);
+    }
+
+    SECTION("Standard ID frame - invalid IDs rejected") {
+        FixedFrame std_frame(Format::DATA_FIXED, CANVersion::STD_FIXED, 0x000);
+
+        // Should reject IDs > 0x7FF (11-bit max)
+        REQUIRE_THROWS_AS(std_frame.set_id(0x800), std::out_of_range);
+        REQUIRE_THROWS_AS(std_frame.set_id(0xFFF), std::out_of_range);
+        REQUIRE_THROWS_AS(std_frame.set_id(0x12345678), std::out_of_range);
+
+        // Verify ID unchanged after exception
+        REQUIRE(std_frame.get_can_id() == 0x000);
+    }
+
+    SECTION("Extended ID frame - valid IDs accepted") {
+        FixedFrame ext_frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x00000000);
+
+        // Should accept valid extended IDs (0x00000000 to 0x1FFFFFFF)
+        REQUIRE_NOTHROW(ext_frame.set_id(0x00000000));
+        REQUIRE_NOTHROW(ext_frame.set_id(0x1FFFFFFF));
+        REQUIRE_NOTHROW(ext_frame.set_id(0x12345678));
+
+        REQUIRE(ext_frame.get_can_id() == 0x12345678);
+    }
+
+    SECTION("Extended ID frame - invalid IDs rejected") {
+        FixedFrame ext_frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x00000000);
+
+        // Should reject IDs > 0x1FFFFFFF (29-bit max)
+        REQUIRE_THROWS_AS(ext_frame.set_id(0x20000000), std::out_of_range);
+        REQUIRE_THROWS_AS(ext_frame.set_id(0xFFFFFFFF), std::out_of_range);
+
+        // Verify ID unchanged after exception
+        REQUIRE(ext_frame.get_can_id() == 0x00000000);
+    }
+}
+
 TEST_CASE("FixedFrame - Field independence (setters don't interfere)",
     "[getter][setter][independence]") {
-    FixedFrame frame;
+    // Use extended frame to allow large ID values
+    FixedFrame frame(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x00000000);
 
     // Set all fields
     frame.set_id(0x12345678);
@@ -216,7 +265,7 @@ TEST_CASE("FixedFrame - Field independence (setters don't interfere)",
     REQUIRE(frame.get_dlc() == 8);
 
     // Change one field
-    frame.set_id(0xAABBCCDD);
+    frame.set_id(0x1ABBCCDD);
 
     // Verify others unchanged
     REQUIRE(frame.get_format() == Format::DATA_FIXED);
@@ -324,8 +373,7 @@ TEST_CASE_METHOD(FixedFrameFixture,
 TEST_CASE("FixedFrame - Serialize-deserialize round-trip preserves data",
     "[roundtrip][serialize]") {
 
-    FixedFrame original;
-    original.set_id(0xABCDEF12);
+    FixedFrame original(Format::DATA_FIXED, CANVersion::EXT_FIXED, 0x1BCDEF12);
     original.set_format(Format::DATA_FIXED);
     std::array<std::uint8_t, 8> data = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22};
     original.set_data(span<const std::uint8_t>(data.data(), 8));
@@ -357,8 +405,8 @@ TEST_CASE("FixedFrame - Frame size is always 20 bytes", "[size]") {
     FixedFrame frame;
     REQUIRE(frame.size() == 20);
 
-    // Size remains constant after modifications
-    frame.set_id(0x12345678);
+    // Size remains constant after modifications (use valid standard ID)
+    frame.set_id(0x123);
     std::array<std::uint8_t, 8> data = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
     frame.set_data(span<const std::uint8_t>(data.data(), 8));
     REQUIRE(frame.size() == 20);

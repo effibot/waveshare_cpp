@@ -129,8 +129,21 @@ namespace USBCANBridge {
             /**
              * @brief Set the CAN ID
              * @param id The CAN ID to set
+             * @throws std::out_of_range if ID is invalid for the current CAN version
              */
             void set_id(std::uint32_t id) {
+                // Validate ID based on CAN version
+                bool is_extended = this->derived().impl_is_extended();
+                if (is_extended) {
+                    if (id > 0x1FFFFFFF) {
+                        throw std::out_of_range("Extended CAN ID must be <= 0x1FFFFFFF");
+                    }
+                } else {
+                    if (id > 0x7FF) {
+                        throw std::out_of_range("Standard CAN ID must be <= 0x7FF");
+                    }
+                }
+                // Set ID in state
                 data_state_.can_id = id;
             }
 

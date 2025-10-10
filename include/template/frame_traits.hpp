@@ -56,17 +56,17 @@
 
 namespace USBCANBridge {
 
-// Forward declarations
+    // Forward declarations
     class FixedFrame;
     class VariableFrame;
     class ConfigFrame;
 
-// === Layout Definitions ===
+    // === Layout Definitions ===
 
-/**
- * @brief Fixed-size frame layout (20 bytes)
- * Used by FixedFrame - all offsets are compile-time constants
- */
+    /**
+     * @brief Fixed-size frame layout (20 bytes)
+     * Used by FixedFrame - all offsets are compile-time constants
+     */
     struct FixedFrameLayout {
         // Protocol structure byte offsets
         static constexpr std::size_t START = 0;
@@ -89,10 +89,10 @@ namespace USBCANBridge {
         static constexpr std::size_t CHECKSUM_END = RESERVED;
     };
 
-/**
- * @brief Variable-size frame layout (5-15 bytes)
- * Used by VariableFrame - some offsets computed at runtime
- */
+    /**
+     * @brief Variable-size frame layout (5-15 bytes)
+     * Used by VariableFrame - some offsets computed at runtime
+     */
     struct VariableFrameLayout {
         // Fixed offsets
         static constexpr std::size_t START = 0;
@@ -118,10 +118,10 @@ namespace USBCANBridge {
         }
     };
 
-/**
- * @brief Config frame layout (20 bytes)
- * Used by ConfigFrame - all offsets are compile-time constants
- */
+    /**
+     * @brief Config frame layout (20 bytes)
+     * Used by ConfigFrame - all offsets are compile-time constants
+     */
     struct ConfigFrameLayout {
         static constexpr std::size_t START = 0;
         static constexpr std::size_t HEADER = 1;
@@ -145,21 +145,20 @@ namespace USBCANBridge {
         static constexpr std::size_t CHECKSUM_END = RESERVED + RESERVED_SIZE - 1;
     };
 
-// === Frame Traits Specializations ===
-// === Frame Traits Specializations ===
+    // === Frame Traits Specializations ===
 
-/**
- * @brief Primary template - not instantiable (forces specialization)
- */
+    /**
+     * @brief Primary template - not instantiable (forces specialization)
+     */
     template<typename Frame>
     struct FrameTraits {
         static_assert(std::is_same_v<Frame, void>,
             "FrameTraits must be specialized for concrete frame types (FixedFrame, VariableFrame, ConfigFrame)");
     };
 
-/**
- * @brief FixedFrame traits - 20 bytes fixed size with checksum
- */
+    /**
+     * @brief FixedFrame traits - 20 bytes fixed size with checksum
+     */
     template<>
     struct FrameTraits<FixedFrame> {
         using Layout = FixedFrameLayout;
@@ -177,9 +176,9 @@ namespace USBCANBridge {
         static constexpr bool IS_CONFIG_FRAME = false;
     };
 
-/**
- * @brief VariableFrame traits - 5 to 15 bytes dynamic size, no checksum
- */
+    /**
+     * @brief VariableFrame traits - 5 to 15 bytes dynamic size, no checksum
+     */
     template<>
     struct FrameTraits<VariableFrame> {
         using Layout = VariableFrameLayout;
@@ -196,9 +195,9 @@ namespace USBCANBridge {
         static constexpr bool IS_CONFIG_FRAME = false;
     };
 
-/**
- * @brief ConfigFrame traits - 20 bytes fixed size with checksum
- */
+    /**
+     * @brief ConfigFrame traits - 20 bytes fixed size with checksum
+     */
     template<>
     struct FrameTraits<ConfigFrame> {
         using Layout = ConfigFrameLayout;
@@ -215,45 +214,52 @@ namespace USBCANBridge {
         static constexpr bool IS_CONFIG_FRAME = true;
     };
 
-// === Helper Type Aliases ===
+    // === Helper Type Aliases ===
 
-/**
- * @brief Alias for accessing Layout type from FrameTraits
- * Usage: using Layout = layout_t<FixedFrame>;
- */
+    /**
+     * @brief Alias for accessing FrameTraits
+     * Usage: using Traits = traits_t<FixedFrame>;
+     */
+    template<typename Frame>
+    using traits_t = FrameTraits<Frame>;
+
+    /**
+     * @brief Alias for accessing Layout type from FrameTraits
+     * Usage: using Layout = layout_t<FixedFrame>;
+     */
     template<typename Frame>
     using layout_t = typename FrameTraits<Frame>::Layout;
 
-// === Type Predicates ===
+    // === Type Predicates ===
 
-/**
- * @brief Check if frame has variable size
- */
+    /**
+     * @brief Check if frame has variable size
+     */
     template<typename Frame>
     inline constexpr bool is_variable_frame_v = FrameTraits<Frame>::IS_VARIABLE_SIZE;
 
-/**
- * @brief Check if frame has fixed size
- */
+    /**
+     * @brief Check if frame has fixed size
+     */
     template<typename Frame>
     inline constexpr bool is_fixed_frame_v = !is_variable_frame_v<Frame>&&
         FrameTraits<Frame>::IS_DATA_FRAME;
 
-/**
- * @brief Check if frame is a data frame (FixedFrame or VariableFrame)
- */
+    /**
+     * @brief Check if frame is a data frame (FixedFrame or VariableFrame)
+     */
     template<typename Frame>
     inline constexpr bool is_data_frame_v = FrameTraits<Frame>::IS_DATA_FRAME;
 
-/**
- * @brief Check if frame is a config frame (ConfigFrame)
- */
+    /**
+     * @brief Check if frame is a config frame (ConfigFrame)
+     */
     template<typename Frame>
     inline constexpr bool is_config_frame_v = FrameTraits<Frame>::IS_CONFIG_FRAME;
 
-/**
- * @brief Check if frame has checksum (FixedFrame or ConfigFrame)
- */
+    /**
+     * @brief Check if frame has checksum (FixedFrame or ConfigFrame)
+     */
     template<typename Frame>
     inline constexpr bool has_checksum_v = FrameTraits<Frame>::HAS_CHECKSUM;
 
