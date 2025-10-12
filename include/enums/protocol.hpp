@@ -297,7 +297,7 @@ namespace USBCANBridge {
         case SerialBaud::BAUD_115200: return B115200;
         case SerialBaud::BAUD_153600: return B153600;
         case SerialBaud::BAUD_2M:     return B2000000;
-        default:                      return B2000000;     // <<< Default to 2M
+        default:                      return B9600;     // <<< Default to 9600
         }
     }
 
@@ -315,7 +315,7 @@ namespace USBCANBridge {
         case B115200:   return SerialBaud::BAUD_115200;
         case B153600:  return SerialBaud::BAUD_153600;
         case B2000000:  return SerialBaud::BAUD_2M;
-        default:         return SerialBaud::BAUD_2M;   // <<< Default to 2M
+        default:         return SerialBaud::BAUD_9600;   // <<< Default to 9600
         }
     }
 

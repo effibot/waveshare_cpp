@@ -22,6 +22,9 @@
 #include <cstring>
 #include <csignal>
 #include <iomanip>
+#include <mutex>
+#include <shared_mutex>
+#include <chrono>
 
 namespace USBCANBridge {
 
@@ -41,12 +44,19 @@ namespace USBCANBridge {
 
         private:
             // # Internal State
-            std::string usb_device_;
-            SerialBaud baudrate_;
+            std::string usb_device_;    // e.g., "/dev/ttyUSB0"
+            SerialBaud baudrate_;   // e.g., SerialBaud::BAUD_2M
             int fd_ = -1;  // File descriptor for the serial port
-            struct termios tty_ {};
-            bool is_open_ = false;
-            volatile std::sig_atomic_t stop_flag = false;
+            struct termios tty_ {}; // Terminal control structure
+            bool is_open_ = false;  // Flag to indicate if the port is open
+            bool is_configured_ = false; // Flag to indicate if the port is configured
+            bool is_monitoring_ = false;  // Flag to indicate if monitoring is active
+            static inline volatile std::sig_atomic_t stop_flag = false; // Flag to indicate if a stop signal was received
+
+            // # Thread-safety primitives
+            mutable std::shared_mutex state_mutex_;  // Protects is_open_, is_configured_, fd_
+            std::mutex write_mutex_;                 // Exclusive write lock
+            std::mutex read_mutex_;                  // Exclusive read lock
 
             // # Internal utility methods
 
@@ -59,7 +69,7 @@ namespace USBCANBridge {
              *
              * @param signum The signal number (unused)
              */
-            void sigint_handler(int);
+            static void sigint_handler(int signum);
 
             /**
              * @brief Configure the serial port settings
@@ -94,10 +104,55 @@ namespace USBCANBridge {
              */
             Result<void> open_port();
 
-            // Low-level read/write operations
-            void write_bytes(const std::uint8_t* data, std::size_t size);
-            void read_bytes(std::uint8_t* buffer, std::size_t size);
-            void flush_port();
+            // === Low-level I/O operations (thread-safe) ===
+
+            /**
+             * @brief Write raw bytes to the serial port (thread-safe)
+             *
+             * This function writes data to the serial port with exclusive write access.
+             * Multiple threads can safely call this method concurrently.
+             *
+             * @param data Pointer to data buffer
+             * @param size Number of bytes to write
+             * @return Result<int> Number of bytes written on success, or error status
+             */
+            Result<int> write_bytes(const std::uint8_t* data, std::size_t size);
+
+            /**
+             * @brief Read raw bytes from the serial port (thread-safe)
+             *
+             * This function reads data from the serial port with exclusive read access.
+             * Multiple threads can safely call this method concurrently.
+             * Uses non-blocking read with termios timeout (VTIME).
+             *
+             * @param buffer Pointer to buffer to store read data
+             * @param size Maximum number of bytes to read
+             * @return Result<int> Number of bytes actually read on success (may be 0 if no data available), or error status
+             */
+            Result<int> read_bytes(std::uint8_t* buffer, std::size_t size);
+
+            /**
+             * @brief Read exact number of bytes with timeout (thread-safe)
+             *
+             * Repeatedly calls read_bytes() until exactly 'size' bytes are read or timeout expires.
+             * Useful for reading fixed-size frames (e.g., 20-byte FixedFrame/ConfigFrame).
+             *
+             * @param buffer Destination buffer (must have capacity >= size)
+             * @param size Exact number of bytes required
+             * @param timeout_ms Total timeout in milliseconds
+             * @return Result<void> Success if all bytes read, Status::DTIMEOUT on timeout, or read error
+             */
+            Result<void> read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
+
+            /**
+             * @brief Flush the serial port buffers (thread-safe)
+             *
+             * This function flushes both input and output buffers of the serial port.
+             * Acquires both read and write locks to ensure no concurrent I/O during flush.
+             *
+             * @return Result<void> Success or error status
+             */
+            Result<void> flush_port();
 
 
         public:
@@ -107,6 +162,22 @@ namespace USBCANBridge {
             USBAdapter(std::string usb_dev, SerialBaud baudrate = DEFAULT_SERIAL_BAUD) :
                 usb_device_(std::move(usb_dev)), baudrate_(baudrate) {
 
+                // Register the SIGINT handler
+                std::signal(SIGINT, sigint_handler);
+
+                // Open and configure the port
+                auto res = open_port();
+                if (res.fail()) {
+                    throw std::runtime_error("Failed to open port: " + res.describe());
+                }
+
+                res = configure_port();
+                if (res.fail()) {
+                    throw std::runtime_error("Failed to configure port: " + res.describe());
+                }
+
+                // Flush any existing data
+                flush_port();
             }
 
 
@@ -124,10 +195,71 @@ namespace USBCANBridge {
 
             // # Set/Get methods
 
+            /**
+             * @brief Get the baudrate object
+             *
+             * @return SerialBaud
+             */
             SerialBaud get_baudrate() const { return baudrate_; }
+            /**
+             * @brief Set the baudrate object
+             *
+             * @param baudrate
+             */
+            void set_baudrate(SerialBaud baudrate) { baudrate_ = baudrate; }
+            /**
+             * @brief Get the name of USB device object
+             * @return std::string
+             */
+
             std::string get_usb_device() const { return usb_device_; }
+
+            /**
+             * @brief Set the name of USB device object
+             * @param usb_device
+             */
+            void set_usb_device(const std::string& usb_device) {
+                // If the port is open, close it first
+                if (is_open_) {
+                    close_port();
+                }
+                // Set the port as not configured
+                is_configured_ = false;
+                // Set the new device name
+                usb_device_ = usb_device;
+            }
+
+            /**
+             * @brief Check if the USB device is open
+             *
+             * @return true if the device is open, false otherwise
+             */
             bool is_open() const { return is_open_; }
+
+            /**
+             * @brief Get the file descriptor of the serial port
+             *
+             * @return int The file descriptor, or -1 if not open
+             */
             int get_fd() const { return fd_; }
+
+            /**
+             * @brief Check if the port is configured
+             *
+             * @return true if the port is configured, false otherwise
+             */
+            bool is_configured() const { return is_configured_; }
+
+            /**
+             * @brief Check if a stop signal has been received
+             *
+             * This function checks if the stop_flag has been set to true,
+             * indicating that a SIGINT signal has been received.
+             *
+             * @return true if a stop signal has been received, false otherwise
+             */
+            static bool should_stop() { return stop_flag; }
+
 
 
 
