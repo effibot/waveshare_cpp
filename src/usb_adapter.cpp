@@ -227,5 +227,118 @@ namespace USBCANBridge {
         return Result<void>::success("Port flushed successfully");
     }
 
+    // === Frame-Level API ===
+
+    template<typename Frame>
+    Result<void> USBAdapter::send_frame(const Frame& frame) {
+        // State-First: Generate protocol buffer from frame state
+        auto buffer = frame.serialize();
+
+        // Write all bytes atomically (thread-safe via write_mutex_)
+        auto res = write_bytes(buffer.data(), buffer.size());
+        if (res.fail()) {
+            return Result<void>::error(res.get_status(), "send_frame");
+        }
+
+        // Verify all bytes written
+        if (res.get_value() != static_cast<int>(buffer.size())) {
+            return Result<void>::error(Status::DNOT_OPEN,
+                "send_frame: Partial write " + std::to_string(res.get_value()) +
+                "/" + std::to_string(buffer.size()));
+        }
+
+        return Result<void>::success();
+    }
+
+    template<typename Frame>
+    Result<Frame> USBAdapter::receive_fixed_frame(int timeout_ms) {
+        static_assert(is_fixed_frame_v<Frame>,
+            "Frame type must be FixedFrame");
+
+        // Read exactly 20 bytes with timeout
+        std::uint8_t buffer[20];
+        auto read_res = read_exact(buffer, 20, timeout_ms);
+        if (read_res.fail()) {
+            return Result<Frame>::error(read_res, "receive_fixed_frame");
+        }
+
+        // State-First: Deserialize buffer into frame state
+        Frame frame;
+        auto deser_res = frame.deserialize(span<const std::uint8_t>(buffer, 20));
+        if (deser_res.fail()) {
+            return Result<Frame>::error(deser_res, "receive_fixed_frame");
+        }
+
+        return Result<Frame>::success(std::move(frame));
+    }
+
+    template<typename Frame>
+    Result<Frame> USBAdapter::receive_variable_frame(int timeout_ms) {
+        static_assert(!is_fixed_frame_v<Frame>,
+            "Frame type must be VariableFrame");
+        std::vector<std::uint8_t> frame_buffer;
+        frame_buffer.reserve(15); // Max VariableFrame size
+
+        auto start_time = std::chrono::steady_clock::now();
+        bool found_start = false;
+
+        while (true) {
+            // Check timeout
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start_time
+            ).count();
+
+            if (elapsed > timeout_ms) {
+                return Result<Frame>::error(Status::WTIMEOUT, "receive_variable_frame");
+            }
+
+            // Read single byte
+            std::uint8_t byte;
+            auto read_res = read_bytes(&byte, 1);
+
+            if (read_res.fail()) {
+                return Result<Frame>::error(read_res,
+                    "receive_variable_frame");
+            }
+
+            if (read_res.value() == 0) {
+                continue; // No data available (non-blocking read)
+            }
+
+            // Look for START byte (0xAA)
+            if (!found_start) {
+                if (byte == 0xAA) {
+                    found_start = true;
+                    frame_buffer.push_back(byte);
+                }
+                continue;
+            }
+
+            // Accumulate frame bytes
+            frame_buffer.push_back(byte);
+
+            // Check for END byte (0x55)
+            if (byte == 0x55) {
+                // State-First: Deserialize buffer into VariableFrame state
+                Frame frame;
+                auto deser_res = frame.deserialize(
+                    span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
+                );
+
+                if (deser_res.fail()) {
+                    return Result<Frame>::error(deser_res,
+                        "receive_variable_frame");
+                }
+
+                return Result<Frame>::success(std::move(frame));
+            }
+
+            // Prevent runaway buffer growth
+            if (frame_buffer.size() > 15) {
+                return Result<Frame>::error(Status::WBAD_LENGTH,
+                    "receive_variable_frame: Frame too long");
+            }
+        }
+    }
 
 }

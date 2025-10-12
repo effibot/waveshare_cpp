@@ -14,6 +14,7 @@
 
 #include "../enums/protocol.hpp"
 #include "../template/result.hpp"
+#include "../template/frame_traits.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <fcntl.h>
@@ -261,8 +262,49 @@ namespace USBCANBridge {
             static bool should_stop() { return stop_flag; }
 
 
+            // === Frame-Level API ===
 
+            /**
+             * @brief Send a Waveshare Frame to the USB adapter
+             *
+             * Serialize the given frame and writes it to serial port atomically.
+             * @note This method is thread-safe and multiple threads can call it concurrently.
+             * @tparam Frame the frame object from which to serialize data
+             * @param frame the frame object to send
+             * @return Result<void> success or error status
+             */
+            template<typename Frame>
+            Result<void> send_frame(const Frame& frame);
 
+            /**
+             * @brief Receive a fixed-size Waveshare data frame from the USB adapter
+             * This method reads exactly 20 bytes from the serial port and parses it into a FixedFrame object using deserialize().
+             * @note This method is thread-safe and multiple threads can call it concurrently.
+             *
+             * @tparam Frame which must be FixedFrame
+             * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
+             * @return Result<FixedFrame> success or error status
+             */
+            template<typename Frame>
+            Result<Frame> receive_fixed_frame(int timeout_ms = 1000);
 
+            /**
+             * @brief Receive a variable-size data frame from the USB adapter
+             * This method reads byte-by-byte until complete VariableFrame detected:
+             *
+             * -START byte (0xAA) detected
+             *
+             * -Reads until END byte (0x55) found
+             *
+             * -Deserializes complete frame
+             *
+             * @note This method is thread-safe and multiple threads can call it concurrently.
+             *
+             * @tparam Frame which must be VariableFrame
+             * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
+             * @return Result<VariableFrame> success or error status
+             */
+            template<typename Frame>
+            Result<Frame> receive_variable_frame(int timeout_ms = 1000);
     };
 }     // namespace USBCANBridge
