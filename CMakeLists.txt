@@ -15,6 +15,7 @@ endif()
 
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/scripts)
 
 # Add option to build tests
 option(BUILD_TESTS "Build tests" ON)
@@ -24,7 +25,9 @@ add_subdirectory(src)
 
 # Build main executable
 add_executable(main main.cpp)
+add_executable(wave_reader scripts/wave_reader.cpp)
 target_link_libraries(main PRIVATE waveshare_cpp)
+target_link_libraries(wave_reader PRIVATE waveshare_cpp)
 
 # Enable testing
 if(BUILD_TESTS)

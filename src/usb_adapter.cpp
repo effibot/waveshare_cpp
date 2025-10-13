@@ -11,6 +11,7 @@
 
 #include "../include/pattern/usb_adapter.hpp"
 
+
 namespace USBCANBridge {
 
     // # Port management methods
@@ -34,6 +35,7 @@ namespace USBCANBridge {
         is_configured_ = false; // Port is not configured yet
 
         // Return success if the port is opened
+        std::fprintf(stdout, "Serial port %s opened successfully.\n", usb_device_.c_str());
         return Result<void>::success("Unconfigured port opened successfully");
 
     }
@@ -56,42 +58,36 @@ namespace USBCANBridge {
             return Result<void>::error(Status::DNOT_OPEN, "configure_port");
         }
 
-        // Get the current attributes of the Serial port
-        if (tcgetattr(fd_, &tty_) != 0) {
-            // Get errno and return as Status
+        // Get current port settings
+        int result = ioctl(fd_, TCGETS2, &tty_);
+        if (result != 0) {
             return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
         }
 
-        // Initialize the tty_ structure to raw mode
-        cfmakeraw(&tty_);
+        // Convert SerialBaud enum to speed_t
+        speed_t baud = to_speed_t(baudrate_);
 
-        // Set I/O baud rate
-        speed_t io_speed = to_speed_t(get_baudrate());
-        cfsetospeed(&tty_, io_speed);
-        cfsetispeed(&tty_, io_speed);
+        // <<< Set port parameters according to Waveshare C example code
+        tty_.c_cflag &= ~CBAUD; // # Clear current baud rate bits
+        //tty_.c_cflag &= ~CSIZE; // # Clear current character size bits
+        tty_.c_cflag = BOTHER // # Use custom baud rate
+            | CS8         // # Use payload with 8 data bits
+            | CSTOPB;         // # Use 2 stop bits
+        tty_.c_iflag = IGNPAR;  // # Ignore framing and parity errors
+        tty_.c_oflag = 0;    // # No output processing
+        tty_.c_lflag = 0;   // # Non-canonical mode, no echo, no signals
+        tty_.c_ispeed = baud;           // # Set input baud rate
+        tty_.c_ospeed = baud;   // # Set output baud rate
 
-        // # Set port settings: 8 bits, no parity, 1 stop bit (8N1)
-        tty_.c_cflag &= ~PARENB; // # deactivate generation and check of parity bit
-        tty_.c_cflag &= ~CSTOPB; // # 1 stop bit
-        tty_.c_cflag &= ~CSIZE;  // # Clear current char size mask
-        tty_.c_cflag |= CS8;     // # set the char size to 8 data bits
-        tty_.c_cflag |= CREAD | CLOCAL; // # Enable receiver, ignore modem control lines
-        tty_.c_cflag |= CRTSCTS; // # Enable hardware flow control
-        // ? not sure if needed:
-        tty_.c_iflag &= ~(IXON | IXOFF | IXANY); // # Disable software flow control
-
-        // # Set port timeout to 1 second, no minimum characters to read
-        tty_.c_cc[VMIN] = 0;    // # Minimum number of characters to read
-        tty_.c_cc[VTIME] = 10;  // # Timeout in deciseconds (1 second)
-
-
-        // Apply the new settings
-        if (tcsetattr(fd_, TCSANOW, &tty_) != 0) {
+        // Apply the settings to the port
+        result = ioctl(fd_, TCSETS2, &tty_);
+        if (result != 0) {
             return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
         }
-
         // Set flag and return success if the port is configured
         is_configured_ = true;
+        std::fprintf(stdout, "Serial port %s configured successfully at %d baud.\n",
+            usb_device_.c_str(), static_cast<int>(baudrate_));
         return Result<void>::success("Port configured successfully");
     }
 
@@ -114,13 +110,18 @@ namespace USBCANBridge {
         is_configured_ = false;
 
         // Return success if the port is closed
+        std::fprintf(stdout, "Serial port %s closed successfully.\n", usb_device_.c_str());
         return Result<void>::success("Port closed successfully");
     }
 
     // # Signal handling
     void USBAdapter::sigint_handler(int signum) {
-        (void)signum; // Unused parameter
+        std::fprintf(stdout, "Received signal %d. Stopping...\n", signum);
+        // Set the stop flag to true
         stop_flag = true;
+        // Propagate the signal to default handler to terminate the program
+        std::signal(signum, SIG_DFL);
+        std::raise(signum);
     }
 
     // === Thread-safe I/O operations ===
@@ -207,75 +208,31 @@ namespace USBCANBridge {
         return Result<void>::success();
     }
 
-    Result<void> USBAdapter::flush_port() {
-        // Shared lock to check state
-        {
-            std::shared_lock<std::shared_mutex> state_lock(state_mutex_);
-            if (!is_open_ || fd_ == -1) {
-                return Result<void>::error(Status::DNOT_OPEN, "flush_port");
-            }
-        }
 
-        // Acquire both locks to ensure no concurrent I/O during flush
-        std::lock_guard<std::mutex> write_lock(write_mutex_);
-        std::lock_guard<std::mutex> read_lock(read_mutex_);
-
-        if (tcflush(fd_, TCIOFLUSH) != 0) {
-            return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
-        }
-
-        return Result<void>::success("Port flushed successfully");
-    }
 
     // === Frame-Level API ===
 
-    template<typename Frame>
-    Result<void> USBAdapter::send_frame(const Frame& frame) {
-        // State-First: Generate protocol buffer from frame state
-        auto buffer = frame.serialize();
 
-        // Write all bytes atomically (thread-safe via write_mutex_)
-        auto res = write_bytes(buffer.data(), buffer.size());
-        if (res.fail()) {
-            return Result<void>::error(res.get_status(), "send_frame");
-        }
-
-        // Verify all bytes written
-        if (res.get_value() != static_cast<int>(buffer.size())) {
-            return Result<void>::error(Status::DNOT_OPEN,
-                "send_frame: Partial write " + std::to_string(res.get_value()) +
-                "/" + std::to_string(buffer.size()));
-        }
-
-        return Result<void>::success();
-    }
-
-    template<typename Frame>
-    Result<Frame> USBAdapter::receive_fixed_frame(int timeout_ms) {
-        static_assert(is_fixed_frame_v<Frame>,
-            "Frame type must be FixedFrame");
-
+    Result<FixedFrame> USBAdapter::receive_fixed_frame(int timeout_ms) {
         // Read exactly 20 bytes with timeout
         std::uint8_t buffer[20];
         auto read_res = read_exact(buffer, 20, timeout_ms);
         if (read_res.fail()) {
-            return Result<Frame>::error(read_res, "receive_fixed_frame");
+            return Result<FixedFrame>::error(read_res, "receive_fixed_frame");
         }
 
         // State-First: Deserialize buffer into frame state
-        Frame frame;
+        FixedFrame frame;
         auto deser_res = frame.deserialize(span<const std::uint8_t>(buffer, 20));
         if (deser_res.fail()) {
-            return Result<Frame>::error(deser_res, "receive_fixed_frame");
+            return Result<FixedFrame>::error(deser_res, "receive_fixed_frame");
         }
 
-        return Result<Frame>::success(std::move(frame));
+        return Result<FixedFrame>::success(std::move(frame));
     }
 
-    template<typename Frame>
-    Result<Frame> USBAdapter::receive_variable_frame(int timeout_ms) {
-        static_assert(!is_fixed_frame_v<Frame>,
-            "Frame type must be VariableFrame");
+    Result<VariableFrame> USBAdapter::receive_variable_frame(int timeout_ms) {
+
         std::vector<std::uint8_t> frame_buffer;
         frame_buffer.reserve(15); // Max VariableFrame size
 
@@ -289,7 +246,7 @@ namespace USBCANBridge {
             ).count();
 
             if (elapsed > timeout_ms) {
-                return Result<Frame>::error(Status::WTIMEOUT, "receive_variable_frame");
+                return Result<VariableFrame>::error(Status::WTIMEOUT, "receive_variable_frame");
             }
 
             // Read single byte
@@ -297,7 +254,7 @@ namespace USBCANBridge {
             auto read_res = read_bytes(&byte, 1);
 
             if (read_res.fail()) {
-                return Result<Frame>::error(read_res,
+                return Result<VariableFrame>::error(read_res,
                     "receive_variable_frame");
             }
 
@@ -320,22 +277,22 @@ namespace USBCANBridge {
             // Check for END byte (0x55)
             if (byte == 0x55) {
                 // State-First: Deserialize buffer into VariableFrame state
-                Frame frame;
+                VariableFrame frame;
                 auto deser_res = frame.deserialize(
                     span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
                 );
 
                 if (deser_res.fail()) {
-                    return Result<Frame>::error(deser_res,
+                    return Result<VariableFrame>::error(deser_res,
                         "receive_variable_frame");
                 }
 
-                return Result<Frame>::success(std::move(frame));
+                return Result<VariableFrame>::success(std::move(frame));
             }
 
             // Prevent runaway buffer growth
             if (frame_buffer.size() > 15) {
-                return Result<Frame>::error(Status::WBAD_LENGTH,
+                return Result<VariableFrame>::error(Status::WBAD_LENGTH,
                     "receive_variable_frame: Frame too long");
             }
         }

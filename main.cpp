@@ -150,21 +150,45 @@ int main() {
 
     // Send the Config frame to the USB adapter
     auto config_frame = make_config_frame()
+        .with_type(Type::CONF_VARIABLE)
         .with_baud_rate(CANBaud::BAUD_1M)
-        .with_mode(CANMode::NORMAL)
+        .with_can_version(CANVersion::STD_FIXED)
         .with_filter(0x00000000)
         .with_mask(0x00000000)
+        .with_mode(CANMode::NORMAL)
+        .with_rtx(RTX::AUTO)
         .build();
     print_frame("Config Frame", config_frame);
 
     // Initialize USB adapter (replace with actual device path)
-    USBAdapter adapter("/dev/ttyUSB0");
-    auto send_res = adapter.send_frame(config_frame.);
+    USBAdapter* adapter = new USBAdapter("/dev/ttyUSB0", SerialBaud:: BAUD_2M);
+    auto send_res = adapter->send_frame(config_frame);
     if (send_res.fail()) {
         std::cerr << "Error sending config frame: " << send_res.describe() << "\n";
         return 1;
     }
     std::cout << "Config frame sent successfully.\n";
+    std::cout << "Config:" << adapter->to_string() << std::endl;
 
+    // Everytime user press Enter, send a test VariableFrame
+    std::string input;
+    while (std::getline(std::cin, input)) {
+        auto variable_frame = make_variable_frame()
+            .with_type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
+            .with_id(0x123)
+            .with_data({0x01, 0x02, 0x03, 0x04})
+            .build();
+        print_frame("Variable Frame", variable_frame);
+        auto send_res = adapter->send_frame(variable_frame);
+        if (send_res.fail()) {
+            std::cerr << "Error sending variable frame: " << send_res.describe() << "\n";
+        } else {
+            std::cout << "Variable frame sent successfully.\n";
+        }
+        std::cout << "Press Enter to send another frame, or Ctrl+C to exit.\n";
+    }
+    // Cleanup and exit
+    delete adapter;
+    std::cout << "Exiting.\n";
     return 0;
 }

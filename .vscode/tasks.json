@@ -7,11 +7,12 @@
             "args": [
                 "--build",
                 "${workspaceFolder}/build",
+                "-j",
+                "8",
                 "--config",
                 "Debug",
                 "--target",
                 "all",
-                "--parallel",
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -23,7 +24,7 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "detail": "Build all targets using CMake"
+            "detail": "Build all targets using CMake Task"
         },
         {
             "type": "shell",
@@ -69,6 +70,25 @@
             },
             "problemMatcher": []
         },
+        {
+            "type": "shell",
+            "label": "Build and Run Debug",
+            "command": "${workspaceFolder}/build/${fileBasenameNoExtension}",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: Build"
+            ],
+            "detail": "Build and run the current file in debug mode"
+        }
     ],
     "version": "2.0.0"
 }

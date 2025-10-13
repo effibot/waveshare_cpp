@@ -23,7 +23,8 @@
 #include <iomanip>
 #include <array>
 #include <boost/core/span.hpp>
-#include <termios.h>
+#include <asm/termbits.h>
+
 using namespace boost;
 
 /**
@@ -289,16 +290,8 @@ namespace USBCANBridge {
      * @return speed_t The corresponding speed_t value
      */
     constexpr speed_t to_speed_t(SerialBaud baud) {
-        switch (baud) {
-        case SerialBaud::BAUD_9600:   return B9600;
-        case SerialBaud::BAUD_19200:  return B19200;
-        case SerialBaud::BAUD_38400:  return B38400;
-        case SerialBaud::BAUD_57600:  return B57600;
-        case SerialBaud::BAUD_115200: return B115200;
-        case SerialBaud::BAUD_153600: return B153600;
-        case SerialBaud::BAUD_2M:     return B2000000;
-        default:                      return B9600;     // <<< Default to 9600
-        }
+        auto actual_speed = static_cast<speed_t>(baud);
+        return actual_speed;
     }
 
     /**
@@ -307,16 +300,7 @@ namespace USBCANBridge {
      * @return SerialBaud The corresponding SerialBaud enum value
      */
     constexpr SerialBaud from_speed_t(speed_t speed) {
-        switch (speed) {
-        case B9600:     return SerialBaud::BAUD_9600;
-        case B19200:    return SerialBaud::BAUD_19200;
-        case B38400:    return SerialBaud::BAUD_38400;
-        case B57600:    return SerialBaud::BAUD_57600;
-        case B115200:   return SerialBaud::BAUD_115200;
-        case B153600:  return SerialBaud::BAUD_153600;
-        case B2000000:  return SerialBaud::BAUD_2M;
-        default:         return SerialBaud::BAUD_9600;   // <<< Default to 9600
-        }
+        return static_cast<SerialBaud>(speed);
     }
 
     // === Byte Manipulation Helpers ===

@@ -196,18 +196,7 @@ namespace USBCANBridge {
                 return serialized_size();
             }
 
-            /**
-             * @brief Finalize the frame after modifications
-             *
-             * This method is called to perform any final checks or adjustments
-             * before the frame is sent or processed.
-             * @note For frames with checksum/TYPE field, this is a no-op since
-             *       serialization handles these dynamically.
-             */
-            void finalize() {
-                // No-op in state-first design - serialization handles everything
-                // Kept for API compatibility
-            }
+
     };
 }
 

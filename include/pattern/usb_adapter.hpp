@@ -15,11 +15,15 @@
 #include "../enums/protocol.hpp"
 #include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
+#include "../frame/config_frame.hpp"
+#include "../frame/fixed_frame.hpp"
+#include "../frame/variable_frame.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>
-#include <termios.h>
+#include <sys/ioctl.h>
+#include <asm/termbits.h>
 #include <cstring>
 #include <csignal>
 #include <iomanip>
@@ -48,7 +52,7 @@ namespace USBCANBridge {
             std::string usb_device_;    // e.g., "/dev/ttyUSB0"
             SerialBaud baudrate_;   // e.g., SerialBaud::BAUD_2M
             int fd_ = -1;  // File descriptor for the serial port
-            struct termios tty_ {}; // Terminal control structure
+            struct termios2 tty_ {}; // Terminal control structure
             bool is_open_ = false;  // Flag to indicate if the port is open
             bool is_configured_ = false; // Flag to indicate if the port is configured
             bool is_monitoring_ = false;  // Flag to indicate if monitoring is active
@@ -145,16 +149,6 @@ namespace USBCANBridge {
              */
             Result<void> read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
 
-            /**
-             * @brief Flush the serial port buffers (thread-safe)
-             *
-             * This function flushes both input and output buffers of the serial port.
-             * Acquires both read and write locks to ensure no concurrent I/O during flush.
-             *
-             * @return Result<void> Success or error status
-             */
-            Result<void> flush_port();
-
 
         public:
             /**
@@ -174,12 +168,14 @@ namespace USBCANBridge {
 
                 res = configure_port();
                 if (res.fail()) {
+                    // Close the port on failure
+                    close_port();
                     throw std::runtime_error("Failed to configure port: " + res.describe());
                 }
-
-                // Flush any existing data
-                flush_port();
             }
+
+            // USBAdapter instance
+
 
 
             /**
@@ -197,11 +193,28 @@ namespace USBCANBridge {
             // # Set/Get methods
 
             /**
-             * @brief Get the baudrate object
+             * @brief Check if the used baudrate is the same used in the termios struct and return it
              *
              * @return SerialBaud
              */
-            SerialBaud get_baudrate() const { return baudrate_; }
+            SerialBaud get_baudrate() const {
+                if (!is_open_ || fd_ == -1) {
+                    throw std::runtime_error("Port not open");
+                }
+                speed_t actual_speed;
+                if (is_configured()) {
+                    speed_t ospeed = tty_.c_ospeed;
+                    speed_t ispeed = tty_.c_ispeed;
+                    if (ospeed != ispeed) {
+                        throw std::runtime_error("Output and Input speeds do not match");
+                    }
+                    actual_speed = ospeed;
+                } else {
+                    // If not configured, return the set baudrate
+                    return baudrate_;
+                }
+                return from_speed_t(actual_speed);
+            }
             /**
              * @brief Set the baudrate object
              *
@@ -261,6 +274,18 @@ namespace USBCANBridge {
              */
             static bool should_stop() { return stop_flag; }
 
+            std::string to_string() const {
+                std::shared_lock<std::shared_mutex> lock(state_mutex_);
+                std::ostringstream oss;
+                oss << "USBAdapter(";
+                oss << "Device: " << usb_device_ << ", ";
+                oss << "Baudrate: " << static_cast<int>(get_baudrate()) << ", ";
+                oss << "FD: " << fd_ << ", ";
+                oss << "Open: " << (is_open_ ? "Yes" : "No") << ", ";
+                oss << "Configured: " << (is_configured_ ? "Yes" : "No");
+                oss << ")";
+                return oss.str();
+            }
 
             // === Frame-Level API ===
 
@@ -274,19 +299,35 @@ namespace USBCANBridge {
              * @return Result<void> success or error status
              */
             template<typename Frame>
-            Result<void> send_frame(const Frame& frame);
+            Result<void> send_frame(const Frame& frame) {
+                // State-First: Generate protocol buffer from frame state
+                auto buffer = frame.serialize();
+
+                // Write all bytes atomically (thread-safe via write_mutex_)
+                auto res = write_bytes(buffer.data(), buffer.size());
+                if (res.fail()) {
+                    return Result<void>::error(res.error(), "send_frame");
+                }
+
+                // Verify all bytes written
+                if (res.value() != static_cast<int>(buffer.size())) {
+                    return Result<void>::error(Status::DNOT_OPEN,
+                        "send_frame: Partial write " + std::to_string(res.value()) +
+                        "/" + std::to_string(buffer.size()));
+                }
+
+                return Result<void>::success();
+            }
 
             /**
              * @brief Receive a fixed-size Waveshare data frame from the USB adapter
              * This method reads exactly 20 bytes from the serial port and parses it into a FixedFrame object using deserialize().
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
-             * @tparam Frame which must be FixedFrame
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
              * @return Result<FixedFrame> success or error status
              */
-            template<typename Frame>
-            Result<Frame> receive_fixed_frame(int timeout_ms = 1000);
+            Result<FixedFrame> receive_fixed_frame(int timeout_ms = 1000);
 
             /**
              * @brief Receive a variable-size data frame from the USB adapter
@@ -300,11 +341,11 @@ namespace USBCANBridge {
              *
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
-             * @tparam Frame which must be VariableFrame
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
              * @return Result<VariableFrame> success or error status
              */
-            template<typename Frame>
-            Result<Frame> receive_variable_frame(int timeout_ms = 1000);
+
+            Result<VariableFrame> receive_variable_frame(int timeout_ms = 1000);
     };
+
 }     // namespace USBCANBridge
