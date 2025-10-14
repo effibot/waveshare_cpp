@@ -93,9 +93,9 @@ namespace waveshare {
             /**
              * @brief Deserialize byte buffer into frame state
              * @param buffer Input buffer to parse
-             * @return Result<void> Success or error status
+             * @throws ProtocolException on validation errors (bad length, checksum, etc.)
              */
-            Result<void> impl_deserialize(span<const std::uint8_t> buffer);
+            void impl_deserialize(span<const std::uint8_t> buffer);
 
             /**
              * @brief Get serialized size

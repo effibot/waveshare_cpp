@@ -223,9 +223,10 @@ namespace waveshare {
 
         // State-First: Deserialize buffer into frame state
         FixedFrame frame;
-        auto deser_res = frame.deserialize(span<const std::uint8_t>(buffer, 20));
-        if (deser_res.fail()) {
-            return Result<FixedFrame>::error(deser_res, "receive_fixed_frame");
+        try {
+            frame.deserialize(span<const std::uint8_t>(buffer, 20));
+        } catch (const WaveshareException& e) {
+            return Result<FixedFrame>::error(e.status(), "receive_fixed_frame");
         }
 
         return Result<FixedFrame>::success(std::move(frame));
@@ -278,12 +279,12 @@ namespace waveshare {
             if (byte == 0x55) {
                 // State-First: Deserialize buffer into VariableFrame state
                 VariableFrame frame;
-                auto deser_res = frame.deserialize(
-                    span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
-                );
-
-                if (deser_res.fail()) {
-                    return Result<VariableFrame>::error(deser_res,
+                try {
+                    frame.deserialize(
+                        span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
+                    );
+                } catch (const WaveshareException& e) {
+                    return Result<VariableFrame>::error(e.status(),
                         "receive_variable_frame");
                 }
 

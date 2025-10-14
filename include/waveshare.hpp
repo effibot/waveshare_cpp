@@ -13,7 +13,9 @@
 
 // Include the protocol enums
 #include "enums/protocol.hpp"
-// Include the result template
+// Include exception hierarchy
+#include "exception/waveshare_exception.hpp"
+// Include the result template (TODO: remove after migration)
 #include "template/result.hpp"
 // Include the frame traits
 #include "template/frame_traits.hpp"

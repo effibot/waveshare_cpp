@@ -383,9 +383,7 @@ TEST_CASE("FixedFrame - Serialize-deserialize round-trip preserves data",
 
     // Deserialize into new frame
     FixedFrame deserialized;
-    auto result = deserialized.deserialize(serialized);
-
-    REQUIRE(result.ok());
+    REQUIRE_NOTHROW(deserialized.deserialize(serialized));
 
     // Verify all fields match
     REQUIRE(deserialized.get_can_id() == original.get_can_id());

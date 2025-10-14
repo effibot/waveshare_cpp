@@ -6,6 +6,8 @@ A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-F
 
 **Current State:** Serial communication complete (68 passing tests), USBAdapter thread-safe, ready for SocketCAN integration.
 
+**Active Migration:** Converting from `Result<T>` pattern to standard C++ exception-based error handling for simpler API. See README.md migration checklist.
+
 ## Architecture Overview
 
 ### State-First Design Philosophy (Critical!)
@@ -103,18 +105,39 @@ static_assert(is_data_frame_v<FixedFrame>);
 static_assert(has_checksum_v<ConfigFrame>);
 ```
 
-#### 3. Result Type (Error Chaining)
-`Result<T>` (`include/template/result.hpp`) automatically builds error call stacks:
+#### 3. Exception-Based Error Handling
+All error conditions throw typed exceptions (migrating from `Result<T>` pattern):
 ```cpp
-Result<void> deserialize(span<const std::uint8_t> buffer) {
+// Exception hierarchy
+class WaveshareException : public std::runtime_error {
+    Status status_;  // Original error code for categorization
+};
+class ProtocolException : public WaveshareException {};  // Frame/protocol errors
+class DeviceException : public WaveshareException {};    // I/O errors
+class TimeoutException : public WaveshareException {};   // Timeout errors
+
+// Usage in deserialization
+void impl_deserialize(span<const std::uint8_t> buffer) {
     if (buffer.size() != 20) {
-        return Result<void>::error(Status::WBAD_LENGTH, "deserialize");
+        throw ProtocolException(Status::WBAD_LENGTH, "deserialize");
     }
-    auto res = parse_header(buffer);
-    if (res.fail()) return res;  // Chains: "parse_header -> deserialize"
-    return Result<void>::success();
+    auto checksum = ChecksumHelper::compute(buffer, ...);
+    if (!ChecksumHelper::validate(buffer, pos, ...)) {
+        throw ProtocolException(Status::WBAD_CHECKSUM, "deserialize");
+    }
+    // ... parse fields
 }
-// Later: res.describe() → "Error [parse_header -> deserialize]"
+
+// Catching exceptions
+try {
+    auto frame = adapter.receive_variable_frame(timeout);
+    // process frame
+} catch (const TimeoutException&) {
+    // Expected, retry
+} catch (const ProtocolException& e) {
+    std::cerr << "Protocol error: " << e.what() << "\n";
+    // Status available via e.status()
+}
 ```
 
 #### 4. Serialization Helpers (Pure Static Utilities)
@@ -250,7 +273,7 @@ Scripts in `scripts/` provide manual testing tools:
 
 **Templates & Utilities**:
 - `include/template/frame_traits.hpp` - Compile-time layout offsets and type predicates
-- `include/template/result.hpp` - `Result<T>` with automatic error chaining
+- `include/exception/waveshare_exception.hpp` - Exception hierarchy (ProtocolException, DeviceException, etc.)
 - `include/interface/serialization_helpers.hpp` - `ChecksumHelper`, `VarTypeHelper` (static)
 - `include/pattern/frame_builder.hpp` - Fluent builder with SFINAE-restricted methods
 
@@ -272,7 +295,7 @@ Scripts in `scripts/` provide manual testing tools:
 1. **Adding frame operations**: Declare `impl_*()` in frame header, define in `src/*.cpp`, expose via interface
 2. **Modifying frame structure**: Update `FrameTraits<Frame>` specialization and `Layout` struct in `frame_traits.hpp`
 3. **Serialization changes**: Modify `impl_serialize()` in frame's `.cpp` file - remember little-endian for IDs
-4. **New validation**: Add to `impl_deserialize()` methods, return `Result<void>` with specific `Status` on error
-5. **Error propagation**: Always use `Result<T>`, provide context string in factory methods (`Result<T>::error(status, "context")`)
-6. **Testing new features**: Add `TEST_CASE` in `test/test_<frame_type>.cpp`, use fixtures for shared state
+4. **New validation**: Add to `impl_deserialize()` methods, throw appropriate exception type (`ProtocolException`, `DeviceException`, etc.)
+5. **Error handling**: Throw exceptions with descriptive messages and context. Catch at appropriate boundaries (e.g., thread loops, API entry points)
+6. **Testing new features**: Add `TEST_CASE` in `test/test_<frame_type>.cpp`, use `REQUIRE_THROWS_AS<ExceptionType>()` for error cases
 7. **Thread-safe operations**: Follow USBAdapter pattern - use `std::shared_mutex` for state, separate mutexes for I/O
