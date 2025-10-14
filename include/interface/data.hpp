@@ -1,23 +1,61 @@
+/**
+ * @file data.hpp
+ * @brief Data frame interface for state-first architecture
+ * @version 3.0
+ * @date 2025-10-09
+ *
+ * State-First Architecture:
+ * - DataState holds format, can_id, dlc, and data vector
+ * - Setters modify state only (no buffer writes)
+ * - Serialization happens on-demand
+ *
+ * @copyright Copyright (c) 2025
+ */
+
 #pragma once
 #include "core.hpp"
 #include <type_traits>
+#include <vector>
 #include <boost/core/span.hpp>
 
 using namespace boost;
 
 namespace USBCANBridge {
+
+    /**
+     * @brief Data state for data frames (FixedFrame, VariableFrame)
+     * Holds runtime values specific to data frames
+     */
+    struct DataState {
+        Format format = Format::DATA_VARIABLE;      // DATA or REMOTE frame
+        std::uint32_t can_id = 0;                   // CAN ID (11-bit or 29-bit)
+        std::size_t dlc = 0;                        // Data Length Code (0-8)
+        std::vector<std::uint8_t> data;             // Data payload (0-8 bytes)
+
+        DataState() {
+            data.reserve(8);  // Pre-allocate for efficiency
+        }
+    };
+
+    /**
+     * @brief Data interface for FixedFrame and VariableFrame (state-first design)
+     *
+     * This class provides:
+     * - DataState holding format, can_id, dlc, and data
+     * - Getters/setters that modify state only
+     * - Utility methods for extended ID detection
+     *
+     * @tparam Frame The frame type (FixedFrame or VariableFrame)
+     */
     template<typename Frame>
     class DataInterface : public CoreInterface<Frame> {
-        // * Alias for traits
-        using traits = frame_traits_t<Frame>;
-        using layout = layout_t<Frame>;
-        using storage = storage_t<Frame>;
-
-        // * Ensure that Derived is VariableFrame or FixedFrame
+        // Ensure that Frame is VariableFrame or FixedFrame
         static_assert(is_data_frame_v<Frame>,
-            "Derived must be a data frame type");
+            "Frame must be a data frame type (FixedFrame or VariableFrame)");
 
         protected:
+            // * Data state (single source of truth)
+            DataState data_state_;
 
             // * Prevent this class from being instantiated directly
             DataInterface() : CoreInterface<Frame>() {
@@ -25,182 +63,140 @@ namespace USBCANBridge {
                     "DataInterface cannot be instantiated directly");
             }
 
-
-        // === Utility Methods ===
         public:
+
+            // === Utility Methods ===
+
             /**
-             * @brief Find if the frame is a remote frame.
+             * @brief Check if the frame is a remote frame.
+             * Remote frames are determined by the FORMAT field:
+             * - For Fixed frames: REMOTE_FIXED (0x02)
+             * - For Variable frames: REMOTE_VARIABLE (0x01)
              * @return bool True if remote frame, false otherwise
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, bool>
-            is_remote() const {
-                auto fmt = this->derived().impl_get_format();
-                return fmt == Format::REMOTE_FIXED ||
-                       fmt == Format::REMOTE_VARIABLE;
+            bool is_remote() const {
+                auto fmt = data_state_.format;
+                auto vers = this->core_state_.can_version;
+
+                // Check if this is a fixed or variable frame
+                bool is_fixed = (vers == CANVersion::STD_FIXED || vers == CANVersion::EXT_FIXED);
+                bool is_variable = (vers == CANVersion::STD_VARIABLE ||
+                    vers == CANVersion::EXT_VARIABLE);
+
+                if (is_fixed) {
+                    return fmt == Format::REMOTE_FIXED;  // 0x02
+                } else if (is_variable) {
+                    return fmt == Format::REMOTE_VARIABLE;  // 0x01
+                }
+
+                return false;  // Unknown frame type
             }
 
             /**
              * @brief Check if the frame is extended (29-bit ID) or standard (11-bit ID).
              * @return bool True if extended, false if standard
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, bool>
-            is_extended() const {
+            bool is_extended() const {
                 return this->derived().impl_is_extended();
             }
 
-            /**
-             * @brief Get the size of the id field
-             * This methods use the frame layout and the current is_extended() value to determine the size of the id field.
-             * @return std::size_t The size of the id field in bytes
-             */
-            std::size_t get_id_field_size() const {
-                if constexpr (is_fixed_frame_v<Frame>) {
-                    return layout::ID_SIZE;
-                }
-                if constexpr (is_variable_frame_v<Frame>) {
-                    return this->layout_.id_size(is_extended());
-                }
+            // === Data Frame Specific Methods ===
 
+            /**
+             * @brief Get the Frame Format (DATA or REMOTE)
+             * @return Format The frame format from state
+             */
+            Format get_format() const {
+                return data_state_.format;
             }
 
             /**
-             * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
-            get_CAN_id_span() {
-                return this->get_storage().subspan(
-                    this->layout_.ID,
-                    this->get_id_field_size()
-                );
-            }
-
-            /**
-             * @brief Get a subspan to access the CAN ID field in the internal storage.
-             * @return span<std::byte> A subspan representing the ID field
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
-            get_CAN_id_span() const {
-                const storage_t<T>& frame_storage = this->get_storage();
-                const size_t id_size = this->get_id_field_size();
-                return frame_storage.subspan(
-                    this->layout_.ID,
-                    id_size
-                );
-            }
-
-
-        // === Data Frame Specific Methods ===
-
-        private:
-            /**
-             * @brief Set the dlc object
-             * This is designed to be called only by the set_data() method, so that the dlc is always consistent with the actual data size.
-             * This calls derived().set_dlc() for frame-specific dlc setting.
-             * @tparam T
-             * @param dlc
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, void>
-            set_dlc(std::size_t dlc) {
-                this->derived().impl_set_dlc(dlc);
-            }
-
-        public:
-
-            /**
-             * @brief Get the Frame Format object
-             * @return Format The frame format
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, Format>
-            get_format() const {
-                return this->derived().impl_get_format();
-            }
-            /**
-             * @brief Set the Frame Format object
+             * @brief Set the Frame Format (DATA or REMOTE)
              * @param format The format to set
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, void>
-            set_format(Format format) {
-                this->derived().impl_set_format(format);
+            void set_format(Format format) {
+                data_state_.format = format;
             }
 
             /**
-             * @brief Get the id object
-             * Get the CAN ID of the data frame.
-             * This calls derived().get_can_id() for frame-specific id retrieval.
-             * @tparam T
-             * @return uint32_t The CAN ID
+             * @brief Get the CAN ID
+             * @return std::uint32_t The CAN ID from state
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, std::uint32_t>
-            get_can_id() const {
-                return this->derived().impl_get_CAN_id();
+            std::uint32_t get_can_id() const {
+                return data_state_.can_id;
             }
+
             /**
-             * @brief Set the id object
-             * Set the CAN ID of the data frame.
-             * This calls derived().set_id() for frame-specific id setting.
-             * @tparam T
+             * @brief Set the CAN ID
              * @param id The CAN ID to set
+             * @throws std::out_of_range if ID is invalid for the current CAN version
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, void>
-            set_id(std::uint32_t id) {
-                this->derived().impl_set_CAN_id(id);
+            void set_id(std::uint32_t id) {
+                // Validate ID based on CAN version
+                bool is_extended = this->derived().impl_is_extended();
+                if (is_extended) {
+                    if (id > 0x1FFFFFFF) {
+                        throw std::out_of_range("Extended CAN ID must be <= 0x1FFFFFFF");
+                    }
+                } else {
+                    if (id > 0x7FF) {
+                        throw std::out_of_range("Standard CAN ID must be <= 0x7FF");
+                    }
+                }
+                // Set ID in state
+                data_state_.can_id = id;
             }
 
             /**
-             * @brief Get the dlc object
-             * Get the Data Length Code (DLC) of the data frame.
-             * This calls derived().get_dlc() for frame-specific dlc retrieval.
-             * @tparam T
-             * @return std::size_t The DLC value
+             * @brief Get the Data Length Code (DLC)
+             * @return std::size_t The DLC value from state
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, std::size_t>
-            get_dlc() const {
-                return this->derived().impl_get_dlc();
+            std::size_t get_dlc() const {
+                return data_state_.dlc;
             }
 
             /**
-             * @brief Get a modifiable view of the data payload.
-             * @return span<std::byte> Mutable view of the data
+             * @brief Get a mutable view of the data payload
+             * @return span<std::uint8_t> Mutable view of the state's data
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<std::byte> >
-            get_data() {
-                return this->derived().impl_get_data();
+            span<std::uint8_t> get_data() {
+                return span<std::uint8_t>(data_state_.data.data(), data_state_.dlc);
             }
 
             /**
-             * @brief Get a read-only view of the data payload.
-             * @return span<const std::byte> View of the data
+             * @brief Get a read-only view of the data payload
+             * @return span<const std::uint8_t> Const view of the state's data
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, span<const std::byte> >
-            get_data() const {
-                return this->derived().impl_get_data();
+            span<const std::uint8_t> get_data() const {
+                return span<const std::uint8_t>(data_state_.data.data(), data_state_.dlc);
             }
 
             /**
-             * @brief Set the data object
-             * Set the data payload of the data frame and update the dlc accordingly.
-             * This calls derived().impl_set_data() for frame-specific data setting, and also updates the dlc accordingly.
-             * @tparam T
-             * @param data A span representing the data payload to set.
+             * @brief Set the data payload and update DLC accordingly
+             * @param data A span representing the data payload to set
+             * @throws std::out_of_range if data size exceeds MAX_DATA_LENGTH (8 bytes)
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_data_frame_v<T>, void>
-            set_data(span<const std::byte> data) {
-                this->derived().impl_set_data(data);
-                set_dlc(data.size());
+            void set_data(span<const std::uint8_t> data) {
+                // Validate data size
+                if (data.size() > MAX_DATA_LENGTH) {
+                    throw std::out_of_range(
+                        "Data size exceeds maximum (8 bytes): " +
+                        std::to_string(data.size()));
+                }
+
+                // Resize data vector and copy
+                data_state_.data.resize(data.size());
+                std::copy(data.begin(), data.end(), data_state_.data.begin());
+                // Update DLC to match actual data size
+                data_state_.dlc = data.size();
+            }
+
+            /**
+             * @brief Clear data-specific state
+             * Called by CoreInterface::clear()
+             */
+            void impl_clear() {
+                data_state_ = DataState{};
             }
     };
 

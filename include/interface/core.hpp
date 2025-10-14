@@ -1,9 +1,15 @@
 /**
  * @file core.hpp
  * @author Andrea Efficace (andrea.efficace@)
- * @brief
- * @version 0.1
- * @date 2025-10-02
+ * @brief Core interface for state-first frame architecture
+ * @version 3.0
+ * @date 2025-10-09
+ *
+ * State-First Architecture:
+ * - CoreState holds runtime frame state (can_version, type)
+ * - No persistent buffer storage
+ * - Serialization on-demand via serialize()
+ * - FrameTraits provides compile-time layout metadata
  *
  * @copyright Copyright (c) 2025
  *
@@ -14,32 +20,46 @@
 #include <boost/core/span.hpp>
 #include <cstddef>
 #include <type_traits>
+#include <vector>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include "../enums/protocol.hpp"
 #include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
 
-#include "checksum.hpp"
-
 using namespace boost;
 
+
 namespace USBCANBridge {
+
     /**
-     * @brief Core interface for all frame types
-     * This class provides common methods and utilities for all frame types.
-     * @tparam Frame The frame type to interface with.
+     * @brief Core state for all frame types
+     * Holds runtime values common to all frames
+     */
+    struct CoreState {
+        CANVersion can_version = CANVersion::STD_VARIABLE;  // Standard or Extended CAN
+        Type type = Type::DATA_VARIABLE;                    // Frame type (DATA_FIXED, DATA_VARIABLE, CONF_FIXED, CONF_VARIABLE)
+    };
+
+    /**
+     * @brief Core interface for all frame types (state-first design)
+     *
+     * This class provides:
+     * - CoreState holding can_version and type
+     * - Serialization/deserialization methods
+     * - Common getters/setters that modify state only
+     * - CRTP access to derived frame implementations
+     *
+     * @tparam Frame The frame type to interface with (FixedFrame, VariableFrame, ConfigFrame)
      */
     template<typename Frame>
     class CoreInterface {
 
         protected:
-            // * Reference to traits
-            using frame_traits_t = FrameTraits<Frame>;
-            frame_traits_t traits_;
-            // * Frame layout
-            alignas(alignof(layout_t<Frame>)) mutable layout_t<Frame> layout_;
-            // * Frame storage
-            alignas(alignof(storage_t<Frame>)) mutable storage_t<Frame> frame_storage_;
+            // * Core state (single source of truth)
+            CoreState core_state_;
 
             // * CRTP helper to access derived class methods
             Frame& derived() {
@@ -51,161 +71,132 @@ namespace USBCANBridge {
                 return static_cast<const Frame&>(*this);
             }
 
-            // * Prevent this class from being instantiated directly
-            CoreInterface() : frame_storage_(traits_.frame_buffer) {
+            // * Default constructor
+            CoreInterface() {
                 static_assert(!std::is_same_v<Frame, CoreInterface>,
                     "CoreInterface cannot be instantiated directly");
-                // Initialize constant fields
-                init_fields();
-            }
-
-        private:
-
-            /**
-             * @brief Initialize constants fields in the frame storage.
-             * This method is called by the derived class constructor (or by the `clear()`) method to set (or reset) the initial values of the constant fields.
-             */
-            void init_fields() {
-                // Initialize the frame storage with default values
-                std::fill(std::begin(frame_storage_), std::end(frame_storage_), std::byte(0x00));
-                // Set the Start byte
-                frame_storage_[layout_.START] = to_byte(Constants::START_BYTE);
-                // Call derived class to initialize fixed fields
-                derived().impl_init_fields();
-                return;
             }
 
         public:
 
-            // === Access to Internal Storage ===
-            /**
-             * @brief Get a mutable reference to the internal frame storage.
-             * This allows read-write access to the raw frame data.
-             * @return storage_t& Mutable reference to the internal frame storage.
-             */
-            storage_t<Frame>& get_storage() {
-                return frame_storage_;
-            }
-            /**
-             * @brief Get a const reference to the internal frame storage.
-             * This allows read-only access to the raw frame data.
-             * @return const storage_t& Const reference to the internal frame storage.
-             */
-            const storage_t<Frame>& get_storage() const {
-                return frame_storage_;
-            }
-
-
-            // === Access to Layout ===
-            /**
-             * @brief Get a const reference to the frame layout.
-             * This allows read-only access to the layout information.
-             * @return const layout_t& Const reference to the frame layout.
-             */
-            const layout_t<Frame>& get_layout() const {
-                return layout_;
-            }
-
-            // === Common Frame Methods ===
+            // === Serialization Methods ===
 
             /**
-             * @brief Clear the frame data.
-             * Reset the frame to its initial state.
-             * @note This will zero out the frame storage and re-initialize constant fields.
+             * @brief Serialize the frame state to a byte buffer
+             *
+             * Creates a transient buffer from the current state using layout metadata.
+             * This is the primary method to get the wire-format representation.
+             *
+             * @return std::vector<std::uint8_t> Serialized frame buffer
+             * @note Calls derived().impl_serialize() for frame-specific logic
              */
-            void clear() {
-                std::fill(std::begin(frame_storage_), std::end(frame_storage_), 0x00);
-                init_fields();
+            std::vector<std::uint8_t> serialize() const {
+                return derived().impl_serialize();
             }
 
             /**
-             * @brief Print the frame in a human-readable format.
-             * @return std::string A string representation of the frame.
-             * @note This calls derived().to_string() for frame-specific string conversion.
+             * @brief Deserialize a byte buffer into frame state
+             *
+             * Populates state from a wire-format buffer.
+             *
+             * @param buffer Byte buffer to deserialize
+             * @return Result<void> Success or error status
+             * @note Calls derived().impl_deserialize() for frame-specific logic
              */
-            std::string to_string() const {
-                return dump_frame<Frame>(frame_storage_);
-            }
-            /**
-             * @brief Get the size of the frame in bytes.
-             * @note If the frame has a fixed size, this returns that size. If variable, it calls derived() to compute the size.
-             * @return std::size_t The size of the frame in bytes.
-             */
-            template<typename T = Frame>
-            std::size_t size() const {
-                if  constexpr (!is_variable_frame_v<T>) {
-                    return frame_traits_t::FRAME_SIZE;
-                }
-                return derived().impl_size();
-
+            Result<void> deserialize(span<const std::uint8_t> buffer) {
+                return derived().impl_deserialize(buffer);
             }
 
-            // === Protocol-Specific Methods ===
             /**
-             * @brief Get the Type byte of the frame.
-             * @return Type The Type byte of the frame.
-             * @note This calls derived().get_type() for frame-specific type retrieval.
+             * @brief Get the serialized size of this frame
+             *
+             * For fixed frames, returns constant size.
+             * For variable frames, computes size based on current state.
+             *
+             * @return std::size_t Size in bytes
+             * @note Calls derived().impl_serialized_size() for frame-specific logic
+             */
+            std::size_t serialized_size() const {
+                return derived().impl_serialized_size();
+            }
+
+            // === State Access Methods ===
+
+            /**
+             * @brief Get the CANVersion (Standard or Extended)
+             * @return CANVersion Current CAN version from state
+             */
+            CANVersion get_CAN_version() const {
+                return core_state_.can_version;
+            }
+
+            /**
+             * @brief Set the CANVersion (Standard or Extended)
+             * @param version The CANVersion to set
+             */
+            void set_CAN_version(CANVersion version) {
+                core_state_.can_version = version;
+            }
+
+            /**
+             * @brief Get the frame Type
+             * @return Type Current frame type from state
              */
             Type get_type() const {
-                return derived().impl_get_type();
+                return core_state_.type;
             }
 
             /**
-             * @brief Set the Type byte of the frame.
-             * @param type The Type byte to set.
-             * @note This calls derived().set_type() for frame-specific type setting.
+             * @brief Set the frame Type (for non-variable frames)
+             * @param type The Type to set
              */
             template<typename T = Frame>
             std::enable_if_t<!is_variable_frame_v<T>, void>
             set_type(Type type) {
-                derived().impl_set_type(type);
+                core_state_.type = type;
+            }
+
+            // === Utility Methods ===
+
+            /**
+             * @brief Clear the frame state
+             * Resets to default values
+             */
+            void clear() {
+                core_state_ = CoreState{};
+                // Let derived classes clear their specific state
+                derived().impl_clear();
             }
 
             /**
-             * @brief Set the Type byte of the frame.
-             * @param ver The CANVersion byte to set.
-             * @param fmt The Format byte to set.
-             * @note This calls derived().get_type() for frame-specific type retrieval.
+             * @brief Print the frame in a human-readable format
+             * @return std::string A string representation of the frame
              */
-            template<typename T = Frame>
-            std::enable_if_t<is_variable_frame_v<T>, void>
-            set_type(CANVersion ver, Format fmt) {
-                derived().impl_set_type(ver, fmt);
+            std::string to_string() const {
+                auto buffer = serialize();
+                // Convert buffer to hex string
+                std::ostringstream oss;
+                oss << std::hex << std::setfill('0');
+                for (const auto& byte : buffer) {
+                    oss << std::setw(2) << static_cast<int>(byte) << " ";
+                }
+                std::string result = oss.str();
+                if (!result.empty()) {
+                    result.pop_back(); // Remove trailing space
+                }
+                return result;
             }
 
             /**
-             * @brief Get the CANVersion byte of the frame.
-             * This tells wether the frame uses standard or extended CAN IDs.
-             * @return CANVersion The CANVersion byte of the frame.
-             * @note This calls derived().get_can_version() for frame-specific frame type retrieval.
+             * @brief Get the size of the frame in bytes
+             * Alias for serialized_size()
+             * @return std::size_t The size of the frame in bytes
              */
-            CANVersion get_CAN_vesion() const {
-                return derived().impl_get_CAN_version();
+            std::size_t size() const {
+                return serialized_size();
             }
 
-            /**
-             * @brief Set the CANVersion byte of the frame.
-             * @param frame_type The CANVersion byte to set.
-             * @note This calls derived().set_CAN_version() for frame-specific frame type setting.
-             */
-            template<typename T = Frame>
-            std::enable_if_t<is_variable_frame_v<T>, void>
-            set_CAN_version(CANVersion frame_type) {
-                derived().impl_set_CAN_version(frame_type);
-            }
 
-            // === Finalization Methods ===
-            /**
-             * @brief Finalize the frame after modifications.
-             *
-             * This method is called to perform any final checks or adjustments
-             * before the frame is sent or processed, assuring that is in a valid state.
-             * @note Fixed and Config frames will recalculate the checksum if needed. Variable frames will update the Type field with the cached values.
-             */
-            void finalize() {
-                this->derived().impl_finalize();
-                return;
-            }
     };
 }
 

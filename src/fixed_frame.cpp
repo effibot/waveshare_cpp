@@ -1,78 +1,98 @@
+/**
+ * @file fixed_frame.cpp
+ * @author Andrea Efficace (andrea.efficace1@gmail.com)
+ * @brief FixedFrame implementation for state-first architecture
+ * @version 0.1
+ * @date 2025-10-10
+ *
+ * @copyright Copyright (c) 2025
+ *
+ */
+
 #include "../include/frame/fixed_frame.hpp"
-#include "../include/enums/protocol.hpp"
-#include <algorithm>
 
 namespace USBCANBridge {
 
-    // === FixedFrame impl_*() Methods ===
-    CANVersion FixedFrame::impl_get_CAN_version() const {
-        std::byte frame_type = frame_storage_[layout_.CAN_VERS];
-        return from_byte<CANVersion>(frame_type);
-    }
-    void FixedFrame::impl_set_CAN_version(CANVersion ver) {
-        frame_storage_[layout_.CAN_VERS] = to_byte(ver);
-        // Mark checksum as dirty since we changed the frame
-        checksum_interface_.mark_dirty();
+    // === Serialization Implementation ===
+
+    std::vector<std::uint8_t> FixedFrame::impl_serialize()
+    const {
+        std::vector<std::uint8_t> buffer(20, 0x00);
+
+        // Fixed protocol bytes
+        buffer[Layout::START] = to_byte(Constants::START_BYTE);
+        buffer[Layout::HEADER] = to_byte(Constants::HEADER);
+        buffer[Layout::TYPE] = to_byte(Type::DATA_FIXED);
+        buffer[Layout::RESERVED] = to_byte(Constants::RESERVED);
+
+        // State-driven bytes
+        buffer[Layout::CAN_VERS] = to_byte(core_state_.can_version);
+        buffer[Layout::FORMAT] = to_byte(data_state_.format);
+        buffer[Layout::DLC] = static_cast<std::uint8_t>(data_state_.dlc);
+
+        // CAN ID (little-endian, 4 bytes)
+        auto id_bytes = int_to_bytes_le<std::uint32_t, 4>(data_state_.can_id);
+        std::copy(id_bytes.begin(), id_bytes.end(), buffer.begin() + Layout::ID);
+
+        // Data (8 bytes, padded with zeros)
+        std::size_t copy_size = std::min(data_state_.dlc, std::size_t(8));
+        std::copy_n(data_state_.data.begin(), copy_size, buffer.begin() + Layout::DATA);
+
+        // Compute and write checksum (TYPE to RESERVED inclusive)
+        ChecksumHelper::write(buffer, Layout::CHECKSUM,
+            Layout::CHECKSUM_START,
+            Layout::CHECKSUM_END + 1);
+
+        return buffer;
     }
 
-    Format FixedFrame::impl_get_format() const {
-        std::byte frame_fmt = frame_storage_[layout_.FORMAT];
-        return from_byte<Format>(frame_fmt);
-    }
-    void FixedFrame::impl_set_format(Format format) {
-        frame_storage_[layout_.FORMAT] = to_byte(format);
-        // Mark checksum as dirty since we changed the frame
-        checksum_interface_.mark_dirty();
-    }
-
-    uint32_t FixedFrame::impl_get_CAN_id() const {
-        // ID is stored in 4 bytes, little-endian
-        return bytes_to_int_le<uint32_t>(get_CAN_id_span());
-    }
-    void FixedFrame::impl_set_CAN_id(uint32_t id) {
-        // ID is stored in 4 bytes, little-endian (fixed size for FixedFrame)
-        constexpr std::size_t id_size = layout_t<FixedFrame>::ID_SIZE;
-        auto id_bytes = int_to_bytes_le<uint32_t, id_size>(id);
-        auto id_span = get_CAN_id_span();
-        // Overwrite the ID bytes in the frame storage
-        std::copy(id_bytes.begin(), id_bytes.end(), id_span.begin());
-        // Mark checksum as dirty since we changed the frame
-        checksum_interface_.mark_dirty();
-    }
-
-    void FixedFrame::impl_set_dlc(std::size_t dlc) {
-        if (dlc > layout_t<FixedFrame>::DATA_SIZE) {
-            throw std::out_of_range("DLC exceeds maximum for FixedFrame");
+    Result<void> FixedFrame::impl_deserialize(span<const std::uint8_t> buffer) {
+        if (buffer.size() < 20) {
+            return Result<void>::error(Status::WBAD_LENGTH,
+                "FixedFrame requires exactly 20 bytes");
         }
-        frame_storage_[layout_.DLC] = static_cast<std::byte>(dlc);
-        // Mark checksum as dirty since we changed the frame
-        checksum_interface_.mark_dirty();
-    }
 
-    std::size_t FixedFrame::impl_get_dlc() const {
-        return static_cast<std::size_t>(frame_storage_[layout_.DLC]);
-    }
-
-    span<const std::byte> FixedFrame::impl_get_data() const {
-        std::size_t dlc = impl_get_dlc();
-        return frame_storage_.subspan(layout_.DATA, dlc);
-    }
-    void FixedFrame::impl_set_data(span<const std::byte> data) {
-        std::size_t dlc = data.size();
-        if (dlc > layout_t<FixedFrame>::DATA_SIZE) {
-            throw std::out_of_range("Data size exceeds maximum for FixedFrame");
+        // Validate checksum
+        if (!ChecksumHelper::validate(buffer, Layout::CHECKSUM,
+            Layout::CHECKSUM_START,
+            Layout::CHECKSUM_END + 1)) {
+            return Result<void>::error(Status::WBAD_CHECKSUM,
+                "Checksum validation failed");
         }
-        // Copy data into frame storage
-        std::copy(data.begin(), data.end(), frame_storage_.begin() + layout_.DATA);
-        // Mark checksum as dirty since we changed the frame
-        checksum_interface_.mark_dirty();
+
+        // Extract state from buffer
+        core_state_.can_version = from_byte<CANVersion>(buffer[Layout::CAN_VERS]);
+        core_state_.type = Type::DATA_FIXED;
+
+        data_state_.format = from_byte<Format>(buffer[Layout::FORMAT]);
+        data_state_.dlc = buffer[Layout::DLC];
+
+        // Extract CAN ID (little-endian)
+        data_state_.can_id = bytes_to_int_le<std::uint32_t>(
+            buffer.subspan(Layout::ID, 4)
+        );
+
+        // Extract data
+        data_state_.data.resize(8);
+        std::copy_n(buffer.begin() + Layout::DATA, 8, data_state_.data.begin());
+
+        return Result<void>::success();
     }
+
+    std::size_t FixedFrame::impl_serialized_size() const {
+        return Traits::FRAME_SIZE;
+    }
+
+    // === State Access Implementations ===
 
     bool FixedFrame::impl_is_extended() const {
-        // Retrieve the CAN_VERS byte
-        std::byte canvers = frame_storage_[layout_.CAN_VERS];
-        // Check if it indicates extended ID
-        return from_byte<CANVersion>(canvers) == CANVersion::EXT_FIXED;
+        return (core_state_.can_version == CANVersion::EXT_FIXED);
+    }
+
+    void FixedFrame::impl_clear() {
+        core_state_.can_version = CANVersion::STD_FIXED;
+        core_state_.type = Type::DATA_FIXED;
+        data_state_ = DataState{};
     }
 
 } // namespace USBCANBridge

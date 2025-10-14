@@ -2,140 +2,221 @@
 
 ## Architecture Overview
 
-This library implements a type-safe C++ interface for Waveshare USB-CAN-A device protocol using **CRTP (Curiously Recurring Template Pattern)** and modern C++ patterns.
+This library implements a type-safe C++ interface for Waveshare USB-CAN-A device protocol using **State-First Architecture** with CRTP (Curiously Recurring Template Pattern) and modern C++ patterns.
 
-### Core Design Pattern: CRTP-Based Interface Hierarchy
+### State-First Design Philosophy
 
-The codebase uses CRTP extensively for compile-time polymorphism:
+**Critical Concept**: Frames store runtime state internally and generate protocol buffers on-demand:
+- **State objects** (`CoreState`, `DataState`) hold runtime values (CAN ID, DLC, data, etc.)
+- **No persistent buffers** - serialization happens on-demand via `serialize()`
+- **Getters/setters modify state only** - no direct buffer manipulation
+- Protocol bytes are generated during `impl_serialize()` and parsed during `impl_deserialize()`
+
+```cpp
+// State-first pattern example
+FixedFrame frame;
+frame.set_id(0x123);              // Modifies data_state_.can_id
+frame.set_data({0x11, 0x22});     // Modifies data_state_.data vector
+auto buffer = frame.serialize();   // Generates 20-byte protocol buffer on-demand
+```
+
+### CRTP Interface Hierarchy
 
 ```
-CoreInterface<Frame>           ← Base for all frames (storage, layout, lifecycle)
-├── DataInterface<Frame>       ← For CAN data frames (fixed & variable)
+CoreInterface<Frame>           ← CoreState: can_version, type
+├── DataInterface<Frame>       ← DataState: format, can_id, dlc, data
 │   ├── FixedFrame            ← 20-byte fixed frames
 │   └── VariableFrame         ← 5-15 byte variable frames
-└── ConfigInterface<Frame>     ← For USB adapter configuration
-    └── ConfigFrame           ← Configuration frames
+└── ConfigInterface<Frame>     ← ConfigState: baud, mode, filter, mask
+    └── ConfigFrame           ← 20-byte config frames
 ```
 
-**Key Pattern**: Each frame class derives from an interface that takes itself as template parameter:
-- `class FixedFrame : public DataInterface<FixedFrame>`
-- `class VariableFrame : public DataInterface<VariableFrame>`
-- Interfaces use `derived()` to call frame-specific `impl_*()` methods
+**Key Pattern**: Interfaces use `derived()` CRTP helper to call frame-specific `impl_*()` methods:
+```cpp
+template<typename Frame>
+std::vector<std::uint8_t> CoreInterface<Frame>::serialize() const {
+    return derived().impl_serialize();  // Calls FixedFrame::impl_serialize(), etc.
+}
+```
 
 ### Frame Types & Protocol
 
-Three frame types implement the Waveshare serial protocol:
+Three frame types implement Waveshare serial protocol (see `README.md` and `doc/diagrams/`):
 
 1. **FixedFrame** (20 bytes): `[START][HEADER][TYPE][CAN_VERS][FORMAT][ID(4)][DLC][DATA(8)][RESERVED][CHECKSUM]`
-   - Always 8-byte data field (padded with zeros if DLC < 8)
-   - Has checksum validation via `ChecksumInterface<FixedFrame>`
+   - Always 8-byte DATA field (pad with zeros if DLC < 8)
+   - Checksum computed during serialization via `ChecksumHelper::compute()`
 
 2. **VariableFrame** (5-15 bytes): `[START][TYPE][ID(2/4)][DATA(0-8)][END]`
-   - Dynamic size based on ID type (2 or 4 bytes) and DLC (0-8 bytes)
-   - TYPE byte encodes: `[0xC0][IsExtended][Format][DLC(4 bits)]`
-   - Managed by `VarTypeInterface<VariableFrame>` for TYPE field reconstruction
-   - Uses internal buffer splitting/merging for size changes
+   - Dynamic size: ID is 2 bytes (standard) or 4 bytes (extended), DATA is 0-8 bytes
+   - TYPE byte encodes: `[0xC0][IsExtended][Format][DLC(4 bits)]` - computed via `VarTypeHelper::encode()`
 
-3. **ConfigFrame** (20 bytes): Configure USB adapter settings (baud rate, mode, filters)
+3. **ConfigFrame** (20 bytes): USB adapter settings (baud rate, mode, filters, masks)
 
-### Critical Implementation Details
+### Critical Implementation Patterns
 
-#### Impl Methods Pattern
-Frame-specific logic lives in `impl_*()` methods called by base interfaces via CRTP:
-- `impl_init_fields()`: Initialize constant protocol fields
-- `impl_get_type()`, `impl_set_type()`: Type byte access
-- `impl_get_CAN_id()`, `impl_set_CAN_id()`: ID manipulation
-- `impl_get_dlc()`, `impl_set_dlc()`: Data length code
-
-#### FrameTraits System
-`include/template/frame_traits.hpp` provides compile-time frame metadata:
-- **StorageType**: `std::array<std::byte, 20>` (fixed) or `boost::span<std::byte>` (variable)
-- **Layout**: Nested struct with byte offsets (e.g., `layout_.ID`, `layout_.CHECKSUM`)
-- **Type predicates**: `is_data_frame_v<T>`, `is_config_frame_v<T>`, `has_checksum_v<T>`
-
-Access traits via:
+#### 1. Impl Methods (CRTP Implementation Points)
+Frame-specific logic lives in `impl_*()` methods in `src/*.cpp`:
 ```cpp
-using storage_t<Frame>  // Get storage type
-using layout_t<Frame>   // Get layout type
-frame_traits_t<Frame>   // Full traits
+// In FixedFrame class (include/frame/fixed_frame.hpp)
+std::vector<std::uint8_t> impl_serialize() const;      // Generate 20-byte buffer from state
+Result<void> impl_deserialize(span<const std::uint8_t>); // Parse buffer into state
+std::size_t impl_serialized_size() const;               // Return 20 (constant)
+bool impl_is_extended() const;                          // Check if CAN_VERS is EXT_*
 ```
 
-#### Dirty Bit Pattern
-Both checksum and TYPE field use dirty tracking:
-- `ChecksumInterface`: Calls `mark_dirty()` after frame modifications, `mark_clean()` after recomputation
-- `VarTypeInterface`: Tracks when TYPE byte needs reconstruction from CAN_VERS/Format/DLC
-
-#### Result Type
-`Result<T>` in `include/template/result.hpp` wraps values or `Status` errors with **automatic error chaining**:
+#### 2. FrameTraits System (Compile-Time Metadata)
+`include/template/frame_traits.hpp` provides layout offsets and type predicates:
 ```cpp
-Result<bool> validate() {
-    auto res = validator.check();
-    if (res.fail()) return res;  // Chains error context automatically
-    return Result<bool>::success(true);
+// Layout usage (all offsets are static constexpr)
+using Layout = FrameTraits<FixedFrame>::Layout;
+buffer[Layout::START] = 0xAA;        // byte 0
+buffer[Layout::ID] = id_byte;        // byte 5
+buffer[Layout::CHECKSUM] = checksum; // byte 19
+
+// Type predicates for SFINAE
+static_assert(is_data_frame_v<FixedFrame>);
+static_assert(has_checksum_v<ConfigFrame>);
+```
+
+#### 3. Result Type (Error Chaining)
+`Result<T>` automatically builds error call stacks:
+```cpp
+Result<void> deserialize(span<const std::uint8_t> buffer) {
+    if (buffer.size() != 20) {
+        return Result<void>::error(Status::WBAD_LENGTH, "deserialize");
+    }
+    auto res = parse_header(buffer);
+    if (res.fail()) return res;  // Chains: "parse_header -> deserialize"
+    return Result<void>::success();
 }
+// Later: res.describe() → "Error [parse_header -> deserialize]"
 ```
-- Use `.ok()`, `.fail()`, `.value()`, `.error()` 
-- Call `.describe()` for full error chain with context
 
-### Builder Pattern
-`FrameBuilder<Frame>` provides fluent, validated construction:
+#### 4. Serialization Helpers (Pure Static Utilities)
+`include/interface/serialization_helpers.hpp` provides stateless helpers:
+- `ChecksumHelper::compute(buffer, start, end)` - Sum bytes in range, return LSB
+- `ChecksumHelper::validate(buffer, pos, start, end)` - Verify stored checksum
+- `VarTypeHelper::encode(is_ext, format, dlc)` - Build VariableFrame TYPE byte
+- `VarTypeHelper::decode(type_byte)` - Extract is_extended, format, dlc from TYPE
+
+**Design Note**: These replaced the previous dirty-bit tracking pattern for simpler, stateless validation.
+
+### Builder Pattern (Validated Construction)
+
+`FrameBuilder<Frame>` uses `FrameBuilderState` to accumulate parameters before construction:
 ```cpp
 auto frame = FrameBuilder<FixedFrame>()
     .with_can_version(CANVersion::STD_FIXED)
     .with_format(Format::DATA_FIXED)
     .with_id(0x123)
-    .with_data({std::byte(0x01), std::byte(0x02)})
-    .finalize()
-    .build();
+    .with_data({0x11, 0x22})
+    .finalize()    // Sets state_.finalized = true
+    .build();      // Validates required fields, constructs FixedFrame
+
+// SFINAE restricts methods:
+.with_baud_rate(...)  // Only available for ConfigFrame
+.with_id(...)         // Only available for DataInterface frames
 ```
-- SFINAE restricts methods to appropriate frame types
-- `validate_state()` checks required fields before `build()`
 
-### Validation System
-Validators in `include/interface/validator/` provide protocol compliance:
-- `CoreValidator<Frame>`: Validates START, TYPE, CAN_VERS, Format bytes
-- `DataValidator<Frame>`: Validates ID ranges, DLC, data payload
-- `ConfigValidator<Frame>`: Validates baud rates, modes, filters/masks
+**Validation Strategy**: Type-safe enums and setter methods prevent invalid states during frame construction. Explicit validators (in `stash/validator/`) are deprecated - validation may be added to deserialization in the future.
 
-Return `Result<bool>` with specific `Status` errors.
+## Future Work / Not Yet Implemented
+
+### Serial Communication Layer
+- USB device detection and connection management
+- Serial read/write operations for frame transmission
+- Device configuration via ConfigFrame
+
+### CANOpen Middleware
+- Translation layer between CANOpen protocol and Waveshare frames
+- SDO (Service Data Object) message handling
+- PDO (Process Data Object) message handling
+- NMT (Network Management) operations
 
 ## Important Conventions
 
-### ID & Endianness
-- CAN IDs stored in **little-endian** in protocol bytes: ID `0x123` → `[0x23][0x01]`
+### ID Endianness (Critical for Wire Format)
+- CAN IDs stored **little-endian** in protocol: ID `0x00000123` → `[0x23][0x01][0x00][0x00]`
 - Standard ID: 11 bits (max `0x7FF`), Extended ID: 29 bits (max `0x1FFFFFFF`)
-- Use `layout_.id_size(is_extended)` for dynamic ID size in VariableFrame
+- VariableFrame ID size: 2 bytes (standard) or 4 bytes (extended)
 
 ### DLC vs Data Size
-- **DLC** (Data Length Code): Number of **valid** data bytes (0-8)
-- **FixedFrame**: DATA field always 8 bytes (pad with zeros if DLC < 8)
+- **DLC**: Number of **valid** data bytes (0-8), stored in protocol
+- **FixedFrame**: DATA field always 8 bytes in buffer (pad with `0x00` if DLC < 8)
 - **VariableFrame**: DATA field size equals DLC (no padding)
 
-### Type vs CAN_VERS Naming
-- Protocol doc uses `FRAME_TYPE` for what library calls `CAN_VERS` (enum class `CANVersion`)
-- Library `Type` refers to frame type: `DATA_FIXED`, `DATA_VARIABLE`, `CONF_FIXED`, `CONF_VARIABLE`
+### Terminology Mapping
+- **Protocol doc** (`FRAME_TYPE`) → **Library** (`CANVersion` enum: `STD_FIXED`, `EXT_VARIABLE`, etc.)
+- **Protocol doc** (`Frame Type`) → **Library** (`Type` enum: `DATA_FIXED`, `CONF_VARIABLE`, etc.)
 
-### Namespace & Dependencies
-- All code in `namespace USBCANBridge`
-- Uses `boost::span` for view semantics (aliased via `using namespace boost`)
-- C++17 minimum (uses `std::byte`, `if constexpr`, `std::optional`)
+### Dependencies & Standards
+- **Namespace**: All code in `namespace USBCANBridge`
+- **C++ Standard**: C++17 (uses `std::optional`, `if constexpr`, `std::variant` in `Result<T>`)
+- **Boost**: Uses `boost::span` for view semantics (aliased `using namespace boost`)
 
-## Code Formatting
-- Uncrustify config in `uncrustify.cfg` (4-space indentation, K&R-like style)
-- Comment-based impl sections: `// === Section Name ===` or `// * Comment`
+## Development Workflow
+
+### Build & Test
+```bash
+# Configure (one-time or after CMakeLists.txt changes)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+# Build (or use VS Code task: "CMake: Build")
+cmake --build build --config Debug -j 8
+
+# Run tests (Catch2 auto-discovered via CTest)
+cd build && ctest --output-on-failure
+
+# Run specific test
+./build/test/test_fixed_frame
+```
+
+### Testing with Catch2
+- Tests in `test/*.cpp`, using Catch2 v3 (auto-fetched via `FetchContent`)
+- Structure: `TEST_CASE("Description", "[tag]")` with fixtures for shared setup
+- Assertions: `REQUIRE(expr)` (fails test), `CHECK(expr)` (continues), `REQUIRE_THROWS_AS(expr, Exception)`
+- See `test/CATCH2_REFERENCE.md` for patterns
+
+### Code Coverage (TODO)
+- CMake option `CODE_COVERAGE=ON` exists but coverage collection needs implementation
+- Intended workflow: `cmake -DCODE_COVERAGE=ON` + coverage report generation
+
+### Code Formatting
+- Uncrustify config: `uncrustify.cfg` (4-space indent, K&R-like)
+- Section comments: `// === Section Name ===` (interfaces), `// * Comment` (impl details)
 
 ## Key Files Reference
-- `include/enums/protocol.hpp`: All protocol constants and enum definitions
-- `include/template/frame_traits.hpp`: Compile-time frame metadata system
-- `include/template/result.hpp`: Error handling with automatic chaining
-- `include/pattern/frame_builder.hpp`: Fluent builder pattern
-- `include/interface/core.hpp`: Base CRTP interface with storage/layout access
-- `README.md`: Complete protocol documentation with diagrams in `doc/diagrams/`
+
+**Core Architecture**:
+- `include/interface/core.hpp` - `CoreInterface<Frame>` with `CoreState` and serialization
+- `include/interface/data.hpp` - `DataInterface<Frame>` with `DataState` (ID, DLC, data)
+- `include/interface/config.hpp` - `ConfigInterface<Frame>` with `ConfigState`
+
+**Frame Implementations**:
+- `include/frame/fixed_frame.hpp` + `src/fixed_frame.cpp` - 20-byte fixed frames
+- `include/frame/variable_frame.hpp` + `src/variable_frame.cpp` - 5-15 byte variable frames
+- `include/frame/config_frame.hpp` + `src/config_frame.cpp` - USB config frames
+
+**Templates & Utilities**:
+- `include/template/frame_traits.hpp` - Compile-time layout offsets and type predicates
+- `include/template/result.hpp` - `Result<T>` with automatic error chaining
+- `include/interface/serialization_helpers.hpp` - `ChecksumHelper`, `VarTypeHelper` (static)
+- `include/pattern/frame_builder.hpp` - Fluent builder with SFINAE-restricted methods
+
+**Protocol & Errors**:
+- `include/enums/protocol.hpp` - All protocol constants (`START=0xAA`, `CANVersion`, `Format`, etc.)
+- `include/enums/error.hpp` - `Status` enum (errors like `WBAD_CHECKSUM`, `WBAD_ID`)
+
+**Documentation**:
+- `README.md` - Protocol details, field descriptions, CAN ID construction
+- `doc/diagrams/*.md` - Mermaid diagrams (packet structure, class hierarchy)
 
 ## When Working With This Codebase
 
-1. **Adding new frame operations**: Add `impl_*()` method to frame class, expose via interface
-2. **Modifying frame structure**: Update `FrameTraits` specialization and `Layout` struct
-3. **New validation**: Add to appropriate validator, return `Result<bool>` with specific `Status`
-4. **Frame modifications**: Call `mark_dirty()` on checksum/TYPE interfaces after changes
-5. **Error propagation**: Use `Result<T>` return types, chain errors via factory methods
+1. **Adding frame operations**: Declare `impl_*()` in frame header, define in `src/*.cpp`, expose via interface
+2. **Modifying frame structure**: Update `FrameTraits<Frame>` specialization and `Layout` struct in `frame_traits.hpp`
+3. **Serialization changes**: Modify `impl_serialize()` in frame's `.cpp` file - remember little-endian for IDs
+4. **New validation**: Add to `impl_deserialize()` methods, return `Result<void>` with specific `Status` on error
+5. **Error propagation**: Always use `Result<T>`, provide context string in factory methods (`Result<T>::error(status, "context")`)
+6. **Testing new features**: Add `TEST_CASE` in `test/test_<frame_type>.cpp`, use fixtures for shared state

@@ -1,0 +1,137 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "CMake: Build",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build",
+                "-j",
+                "8",
+                "--config",
+                "Debug",
+                "--target",
+                "all",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Build all targets using CMake Task"
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Configure",
+            "command": "cmake",
+            "args": [
+                "-S",
+                "${workspaceFolder}",
+                "-B",
+                "${workspaceFolder}/build",
+                "-DCMAKE_BUILD_TYPE=Debug",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "detail": "Configure CMake project"
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Clean and Rebuild",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: Clean",
+                "CMake: Build"
+            ],
+            "problemMatcher": [],
+            "detail": "Clean and rebuild the project"
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Clean",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build",
+                "--target",
+                "clean"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
+            "label": "Build and Run Debug",
+            "command": "${workspaceFolder}/build/${fileBasenameNoExtension}",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: Build"
+            ],
+            "detail": "Build and run the current file in debug mode"
+        },
+        {
+            "type": "shell",
+            "label": "Build and Run Reader",
+            "command": "${workspaceFolder}/build/scripts/wave_reader",
+            "args": [
+                "-d",
+                "/dev/ttyUSB0",
+                "-s",
+                "2000000",
+                "-b",
+                "1000000",
+                "-f",
+                "variable",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: Build"
+            ],
+            "detail": "Build and run the wave_reader script"
+        },
+        {
+            "type": "shell",
+            "label": "Build and Run Write",
+            "command": "${workspaceFolder}/build/scripts/wave_writer",
+            "args": [
+                "-d",
+                "/dev/ttyUSB1",
+                "-s",
+                "2000000",
+                "-b",
+                "1000000",
+                "-f",
+                "variable",
+            ]
+        }
+    ],
+    "version": "2.0.0"
+}
