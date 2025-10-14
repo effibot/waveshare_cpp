@@ -19,26 +19,64 @@
 #include "../include/interface/socketcan_helpers.hpp"
 #include "../include/exception/waveshare_exception.hpp"
 #include "../include/pattern/frame_builder.hpp"
+#include "../include/io/real_can_socket.hpp"
 
 namespace waveshare {
 
-    // === Constructor & Destructor ===
+    // === Constructor & Factory ===
 
-    SocketCANBridge::SocketCANBridge(const BridgeConfig& config)
+    SocketCANBridge::SocketCANBridge(const BridgeConfig& config,
+        std::unique_ptr<ICANSocket> can_socket,
+        std::unique_ptr<USBAdapter> usb_adapter)
         : config_(config)
-        , socketcan_fd_(-1)
-        , adapter_(nullptr) {
+        , can_socket_(std::move(can_socket))
+        , adapter_(std::move(usb_adapter)) {
 
         // Validate configuration
         config_.validate();
 
-        // Open and configure SocketCAN socket
-        socketcan_fd_ = open_socketcan_socket(config_.socketcan_interface);
-        set_socketcan_timeouts();
+        // Validate injected dependencies
+        if (!can_socket_ || !can_socket_->is_open()) {
+            throw DeviceException(Status::DNOT_OPEN, "SocketCANBridge: CAN socket not open");
+        }
+        if (!adapter_ || !adapter_->is_open()) {
+            throw DeviceException(Status::DNOT_OPEN, "SocketCANBridge: USB adapter not open");
+        }
 
-        // Initialize and configure USB adapter (always required)
-        initialize_usb_adapter();
+        // Configure USB adapter with CAN settings
         configure_usb_adapter();
+    }
+
+    std::unique_ptr<SocketCANBridge> SocketCANBridge::create(const BridgeConfig& config) {
+        // Validate configuration first
+        config.validate();
+
+        // Create real CAN socket (auto-opens and configures)
+        auto can_socket = std::make_unique<RealCANSocket>(
+            config.socketcan_interface,
+            config.socketcan_read_timeout_ms
+        );
+
+        // Create USB adapter (auto-opens and configures)
+        auto usb_adapter = USBAdapter::create(
+            config.usb_device_path,
+            config.serial_baud_rate
+        );
+
+        // Configure USB adapter for CAN
+        ConfigFrame can_config = FrameBuilder<ConfigFrame>()
+            .with_baud_rate(config.can_baud_rate)
+            .with_mode(config.can_mode)
+            .with_filter(config.filter_id)
+            .with_mask(config.filter_mask)
+            .build();
+
+        usb_adapter->send_frame(can_config);
+
+        // Create bridge with injected dependencies
+        return std::unique_ptr<SocketCANBridge>(
+            new SocketCANBridge(config, std::move(can_socket), std::move(usb_adapter))
+        );
     }
 
     SocketCANBridge::~SocketCANBridge() {
@@ -52,151 +90,13 @@ namespace waveshare {
                       << e.what() << std::endl;
         }
 
-        // Gracefully close SocketCAN socket
-        try {
-            if (socketcan_fd_ >= 0) {
-                close_socketcan_socket();
-            }
-        } catch (const std::exception& e) {
-            // Log error but don't throw from destructor
-            std::cerr << "Error closing SocketCAN socket in destructor: "
-                      << e.what() << std::endl;
-        }
+        // CAN socket automatically closed by ICANSocket destructor
     }
 
-    // === Move Operations ===
+    // === Move Operations (default, handles unique_ptr members correctly) ===
+    // Move constructor and assignment use compiler-generated defaults
 
-    SocketCANBridge::SocketCANBridge(SocketCANBridge&& other) noexcept
-        : config_(std::move(other.config_))
-        , socketcan_fd_(other.socketcan_fd_) {
-
-        // Take ownership of socket FD
-        other.socketcan_fd_ = -1;  // Invalidate source
-    }
-
-    SocketCANBridge& SocketCANBridge::operator=(SocketCANBridge&& other) noexcept {
-        if (this != &other) {
-            // Close our current socket if open
-            try {
-                if (socketcan_fd_ >= 0) {
-                    close_socketcan_socket();
-                }
-            } catch (...) {
-                // Ignore errors during cleanup
-            }
-
-            // Move data from other
-            config_ = std::move(other.config_);
-            socketcan_fd_ = other.socketcan_fd_;
-
-            // Invalidate source
-            other.socketcan_fd_ = -1;
-        }
-        return *this;
-    }
-
-    // === SocketCAN Socket Management ===
-
-    int SocketCANBridge::open_socketcan_socket(const std::string& interface) {
-        // Create SocketCAN socket
-        int fd = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-        if (fd < 0) {
-            throw DeviceException(
-                Status::DCONFIG_ERROR,
-                "Failed to create SocketCAN socket: " + std::string(strerror(errno))
-            );
-        }
-
-        // Get interface index
-        struct ifreq ifr;
-        std::memset(&ifr, 0, sizeof(ifr));
-        std::strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ - 1);
-        ifr.ifr_name[IFNAMSIZ - 1] = '\0';  // Ensure null termination
-
-        if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
-            close(fd);  // Clean up socket before throwing
-            throw DeviceException(
-                Status::DNOT_FOUND,
-                "SocketCAN interface '" + interface + "' not found: " +
-                std::string(strerror(errno))
-            );
-        }
-
-        // Bind socket to CAN interface
-        struct sockaddr_can addr;
-        std::memset(&addr, 0, sizeof(addr));
-        addr.can_family = AF_CAN;
-        addr.can_ifindex = ifr.ifr_ifindex;
-
-        if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-            close(fd);  // Clean up socket before throwing
-            throw DeviceException(
-                Status::DCONFIG_ERROR,
-                "Failed to bind SocketCAN socket to '" + interface + "': " +
-                std::string(strerror(errno))
-            );
-        }
-
-        return fd;
-    }
-
-    void SocketCANBridge::set_socketcan_timeouts() {
-        if (socketcan_fd_ < 0) {
-            throw DeviceException(
-                Status::DNOT_OPEN,
-                "Cannot set timeouts on closed SocketCAN socket"
-            );
-        }
-
-        // Convert milliseconds to struct timeval
-        struct timeval tv;
-        tv.tv_sec = config_.socketcan_read_timeout_ms / 1000;
-        tv.tv_usec = (config_.socketcan_read_timeout_ms % 1000) * 1000;
-
-        // Set receive timeout
-        if (setsockopt(socketcan_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-            throw DeviceException(
-                Status::DCONFIG_ERROR,
-                "Failed to set SocketCAN receive timeout: " +
-                std::string(strerror(errno))
-            );
-        }
-    }
-
-    void SocketCANBridge::close_socketcan_socket() {
-        if (socketcan_fd_ < 0) {
-            return;  // Already closed
-        }
-
-        if (close(socketcan_fd_) < 0) {
-            int saved_errno = errno;
-            socketcan_fd_ = -1;  // Mark as closed even on error
-            throw DeviceException(
-                Status::DCONFIG_ERROR,
-                "Failed to close SocketCAN socket: " +
-                std::string(strerror(saved_errno))
-            );
-        }
-
-        socketcan_fd_ = -1;
-    }
-
-    // === USB Adapter Management ===
-
-    void SocketCANBridge::initialize_usb_adapter() {
-        try {
-            // Create USBAdapter (constructor auto-opens and configures port)
-            adapter_ = std::make_shared<USBAdapter>(
-                config_.usb_device_path,
-                config_.serial_baud_rate
-            );
-        } catch (const std::exception& e) {
-            throw DeviceException(
-                Status::DCONFIG_ERROR,
-                "Failed to initialize USB adapter: " + std::string(e.what())
-            );
-        }
-    }
+    // === USB Adapter Configuration ===
 
     void SocketCANBridge::configure_usb_adapter() {
         if (!adapter_) {
@@ -320,8 +220,8 @@ namespace waveshare {
                 // Convert to SocketCAN format
                 struct can_frame cf = SocketCANHelper::to_socketcan(frame);
 
-                // Write to SocketCAN socket
-                ssize_t bytes = write(socketcan_fd_, &cf, sizeof(struct can_frame));
+                // Write to CAN socket
+                ssize_t bytes = can_socket_->send(cf);
                 if (bytes != sizeof(struct can_frame)) {
                     stats_.socketcan_tx_errors.fetch_add(1, std::memory_order_relaxed);
                     if (bytes < 0) {
@@ -358,19 +258,20 @@ namespace waveshare {
         struct can_frame cf;
         fd_set readfds;
         struct timeval timeout;
+        int can_fd = can_socket_->get_fd();
 
         while (running_.load(std::memory_order_relaxed)) {
             try {
                 // Set up select() for timeout handling
                 FD_ZERO(&readfds);
-                FD_SET(socketcan_fd_, &readfds);
+                FD_SET(can_fd, &readfds);
 
                 // Configure timeout
                 timeout.tv_sec = config_.socketcan_read_timeout_ms / 1000;
                 timeout.tv_usec = (config_.socketcan_read_timeout_ms % 1000) * 1000;
 
                 // Wait for socket to be readable (with timeout)
-                int ret = select(socketcan_fd_ + 1, &readfds, nullptr, nullptr, &timeout);
+                int ret = select(can_fd + 1, &readfds, nullptr, nullptr, &timeout);
 
                 if (ret < 0) {
                     // Select error
@@ -383,7 +284,7 @@ namespace waveshare {
                 }
 
                 // Socket is readable - read CAN frame
-                ssize_t bytes = read(socketcan_fd_, &cf, sizeof(struct can_frame));
+                ssize_t bytes = can_socket_->receive(cf);
                 if (bytes < 0) {
                     stats_.socketcan_rx_errors.fetch_add(1, std::memory_order_relaxed);
                     std::cerr << "[CAN→USB] Socket read error: " << std::strerror(errno) <<

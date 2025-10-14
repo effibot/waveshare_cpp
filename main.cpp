@@ -86,14 +86,14 @@ int main(int argc, char* argv[]) {
         config.validate();
         std::cout << "[CONFIG] Configuration validated successfully.\n\n";
 
-        // Create bridge
+        // Create bridge using factory method
         std::cout << "[BRIDGE] Creating SocketCAN bridge...\n";
-        SocketCANBridge bridge(config);
-        g_bridge = &bridge;
+        auto bridge_ptr = SocketCANBridge::create(config);
+        SocketCANBridge& bridge = *bridge_ptr;
+        g_bridge = bridge_ptr.get();
 
         if (bridge.is_socketcan_open()) {
-            std::cout << "[BRIDGE] SocketCAN socket opened successfully (fd="
-                      << bridge.get_socketcan_fd() << ")\n";
+            std::cout << "[BRIDGE] SocketCAN socket opened successfully\n";
         }
         if (bridge.get_adapter()) {
             std::cout << "[BRIDGE] USB adapter initialized successfully\n";

@@ -213,11 +213,12 @@ namespace waveshare {
 /**
  * @brief Initialize USB adapter with configuration
  * @param config Script configuration
- * @return USBAdapter* Initialized adapter
+ * @return std::unique_ptr<USBAdapter> Initialized adapter (ownership transferred)
  * @throws WaveshareException if initialization fails
  */
-    inline USBAdapter* initialize_adapter(const ScriptConfig& config) {
-        auto* adapter = new USBAdapter(config.device, config.serial_baudrate);
+    std::unique_ptr<USBAdapter> initialize_adapter(const ScriptConfig& config) {
+        // Create and return adapter using factory method
+        auto adapter = USBAdapter::create(config.device, config.serial_baudrate);
 
         // Create and send configuration frame
         auto config_frame = FrameBuilder<ConfigFrame>()

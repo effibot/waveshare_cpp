@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
         ScriptConfig config = parse_arguments(argc, argv, true);
 
         // Initialize and configure adapter
-        USBAdapter* adapter = initialize_adapter(config);
+        auto adapter = initialize_adapter(config);
 
         // Read frames in a loop
         while (!USBAdapter::should_stop()) {
@@ -45,8 +45,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Cleanup
-        delete adapter;
+        // Cleanup (automatic with unique_ptr)
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

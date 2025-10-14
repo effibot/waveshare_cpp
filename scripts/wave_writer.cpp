@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
         ScriptConfig config = parse_arguments(argc, argv, false);
 
         // Initialize and configure adapter
-        USBAdapter* adapter = initialize_adapter(config);
+        auto adapter = initialize_adapter(config);
 
         // Create data frame based on configuration
         std::variant<FixedFrame, VariableFrame> data_frame;
@@ -59,8 +59,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
-        // Cleanup
-        delete adapter;
+        // Cleanup (automatic with unique_ptr)
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

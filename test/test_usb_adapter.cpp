@@ -37,17 +37,17 @@ TEST_CASE("USBAdapter - Public API Configuration", "[usb_adapter]") {
 
 TEST_CASE("USBAdapter - Error handling without device", "[usb_adapter]") {
 
-    SECTION("Constructor throws on invalid device") {
+    SECTION("Factory method throws on invalid device") {
         REQUIRE_THROWS_AS(
-            USBAdapter("/dev/nonexistent_device_12345"),
-            std::runtime_error
+            USBAdapter::create("/dev/nonexistent_device_12345"),
+            DeviceException
         );
     }
 
-    SECTION("Constructor error message contains descriptive text") {
+    SECTION("Factory method error message contains descriptive text") {
         try {
-            USBAdapter adapter("/dev/null_invalid_can");
-            FAIL("Should have thrown runtime_error");
+            USBAdapter::create("/dev/null_invalid_can");
+            FAIL("Should have thrown DeviceException");
         } catch (const std::runtime_error& e) {
             std::string msg = e.what();
             REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring("Device not found"));

@@ -29,6 +29,8 @@
 #include <mutex>
 #include <shared_mutex>
 #include <chrono>
+#include "../io/serial_port.hpp"
+#include <memory>
 
 namespace waveshare {
 
@@ -39,26 +41,24 @@ namespace waveshare {
      * It abstracts low-level USB communication and provides high-level methods
      * for sending and receiving CAN frames.
      *
-     * @note This implementation relies on the fact that the Linux kernel exposes those adapter
-     * under /dev/ttyUSBx as a serial device, loading the `ch341-uart` driver.
-     * Under Windows, the driver is provided in the official Waveshare website.
-     * See the project README for details.
+     * @note This implementation uses dependency injection for serial I/O to enable
+     * testing with mocks. Production code uses RealSerialPort for hardware communication.
      */
     class USBAdapter {
 
         private:
+            // # I/O abstraction
+            std::unique_ptr<ISerialPort> serial_port_;  // Injected serial port (real or mock)
+
             // # Internal State
             std::string usb_device_;    // e.g., "/dev/ttyUSB0"
             SerialBaud baudrate_;   // e.g., SerialBaud::BAUD_2M
-            int fd_ = -1;  // File descriptor for the serial port
-            struct termios2 tty_ {}; // Terminal control structure
-            bool is_open_ = false;  // Flag to indicate if the port is open
             bool is_configured_ = false; // Flag to indicate if the port is configured
             bool is_monitoring_ = false;  // Flag to indicate if monitoring is active
             static inline volatile std::sig_atomic_t stop_flag = false; // Flag to indicate if a stop signal was received
 
             // # Thread-safety primitives
-            mutable std::shared_mutex state_mutex_;  // Protects is_open_, is_configured_, fd_
+            mutable std::shared_mutex state_mutex_;  // Protects is_configured_
             std::mutex write_mutex_;                 // Exclusive write lock
             std::mutex read_mutex_;                  // Exclusive read lock
 
@@ -75,38 +75,7 @@ namespace waveshare {
              */
             static void sigint_handler(int signum);
 
-            /**
-             * @brief Configure the serial port settings
-             *
-             * This function configures the serial port settings such as baud rate,
-             * character size, and parity. It uses the termios structure to set
-             * the desired parameters.
-             * Those parameters are set according to the adapter C example code.
-             * @throws DeviceException if the configuration fails
-             * @note This function should be called after opening the port.
-             */
-            void configure_port();
-
-            /**
-             * @brief Close the serial port
-             *
-             * This function closes the serial port if it is open. It also resets
-             * the is_open_ flag to false.
-             * @throws DeviceException if closing the port fails
-             * @note This function should be called in the destructor to ensure
-             * proper resource cleanup.
-             */
-            void close_port();
-
-            /**
-             * @brief Open the serial port
-             *
-             * This function opens the serial port specified by usb_device_.
-             * It sets the file descriptor and configures the port settings.
-             * @throws DeviceException if opening or configuring the port fails
-             * @note This function should be called before any read/write operations.
-             */
-            void open_port();
+            // # Internal utility methods (removed old port management - now in RealSerialPort)
 
             // === Low-level I/O operations (thread-safe) ===
 
@@ -157,69 +126,45 @@ namespace waveshare {
 
         public:
             /**
-             * @brief Constructor for USBAdapter
+             * @brief Constructor for USBAdapter with dependency injection
+             * @param serial_port Injected serial port (real or mock)
+             * @param usb_dev Device path for identification
+             * @param baudrate Serial baud rate (for logging/reference)
              */
-            USBAdapter(std::string usb_dev, SerialBaud baudrate = DEFAULT_SERIAL_BAUD) :
-                usb_device_(std::move(usb_dev)), baudrate_(baudrate) {
+            USBAdapter(std::unique_ptr<ISerialPort> serial_port, std::string usb_dev,
+                SerialBaud baudrate = DEFAULT_SERIAL_BAUD);
 
-                // Register the SIGINT handler
-                std::signal(SIGINT, sigint_handler);
-
-                // Open and configure the port
-                open_port();
-                if (!is_open_) {
-                    throw std::runtime_error("Failed to open port");
-                }
-
-                configure_port();
-                if (!is_configured_) {
-                    // Close the port on failure
-                    close_port();
-                    throw std::runtime_error("Failed to configure port");
-                }
-            }
+            /**
+             * @brief Factory method to create USBAdapter with real hardware
+             * @param usb_dev Device path (e.g., "/dev/ttyUSB0")
+             * @param baudrate Serial baud rate
+             * @return std::unique_ptr<USBAdapter> Configured adapter ready to use
+             */
+            static std::unique_ptr<USBAdapter> create(const std::string& usb_dev,
+                SerialBaud baudrate = DEFAULT_SERIAL_BAUD);
 
             // USBAdapter instance
 
 
 
             /**
-             * @brief Destructor for USBAdapter
+             * @brief Destructor
              *
-             * This destructor ensures that the serial port is closed properly
-             * when the USBAdapter object goes out of scope.
+             * Serial port is automatically closed by ISerialPort destructor
              */
-            ~USBAdapter() {
-                if (is_open_) {
-                    close_port();
-                }
-            }
+            ~USBAdapter() = default;
 
             // # Set/Get methods
 
             /**
-             * @brief Check if the used baudrate is the same used in the termios struct and return it
+             * @brief Get the configured baud rate
              *
-             * @return SerialBaud
+             * @return SerialBaud The baud rate set during construction
              */
             SerialBaud get_baudrate() const {
-                if (!is_open_ || fd_ == -1) {
-                    throw std::runtime_error("Port not open");
-                }
-                speed_t actual_speed;
-                if (is_configured()) {
-                    speed_t ospeed = tty_.c_ospeed;
-                    speed_t ispeed = tty_.c_ispeed;
-                    if (ospeed != ispeed) {
-                        throw std::runtime_error("Output and Input speeds do not match");
-                    }
-                    actual_speed = ospeed;
-                } else {
-                    // If not configured, return the set baudrate
-                    return baudrate_;
-                }
-                return from_speed_t(actual_speed);
+                return baudrate_;
             }
+
             /**
              * @brief Set the baudrate object
              *
@@ -236,11 +181,13 @@ namespace waveshare {
             /**
              * @brief Set the name of USB device object
              * @param usb_device
+             * @note This will close the current port if open. Call create() to reopen with new device.
              */
             void set_usb_device(const std::string& usb_device) {
-                // If the port is open, close it first
-                if (is_open_) {
-                    close_port();
+                // Close current port
+                if (serial_port_) {
+                    serial_port_->close();
+                    serial_port_.reset();
                 }
                 // Set the port as not configured
                 is_configured_ = false;
@@ -253,14 +200,18 @@ namespace waveshare {
              *
              * @return true if the device is open, false otherwise
              */
-            bool is_open() const { return is_open_; }
+            bool is_open() const {
+                return serial_port_ && serial_port_->is_open();
+            }
 
             /**
              * @brief Get the file descriptor of the serial port
              *
              * @return int The file descriptor, or -1 if not open
              */
-            int get_fd() const { return fd_; }
+            int get_fd() const {
+                return serial_port_ ? serial_port_->get_fd() : -1;
+            }
 
             /**
              * @brief Check if the port is configured
@@ -284,9 +235,9 @@ namespace waveshare {
                 std::ostringstream oss;
                 oss << "USBAdapter(";
                 oss << "Device: " << usb_device_ << ", ";
-                oss << "Baudrate: " << static_cast<int>(get_baudrate()) << ", ";
-                oss << "FD: " << fd_ << ", ";
-                oss << "Open: " << (is_open_ ? "Yes" : "No") << ", ";
+                oss << "Baudrate: " << static_cast<int>(baudrate_) << ", ";
+                oss << "FD: " << (serial_port_ ? serial_port_->get_fd() : -1) << ", ";
+                oss << "Open: " << (serial_port_ && serial_port_->is_open() ? "Yes" : "No") << ", ";
                 oss << "Configured: " << (is_configured_ ? "Yes" : "No");
                 oss << ")";
                 return oss.str();

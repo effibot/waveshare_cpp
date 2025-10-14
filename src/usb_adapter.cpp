@@ -10,109 +10,43 @@
  */
 
 #include "../include/pattern/usb_adapter.hpp"
+#include "../include/io/real_serial_port.hpp"
 
 
 namespace waveshare {
 
-    // # Port management methods
+    // ===================================================================
+    // Constructor / Factory
+    // ===================================================================
 
-    void USBAdapter::open_port() {
-        // Exclusive lock for state modification
-        std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    USBAdapter::USBAdapter(std::unique_ptr<ISerialPort> serial_port, std::string usb_dev,
+        SerialBaud baudrate)
+        : serial_port_(std::move(serial_port)), usb_device_(std::move(usb_dev)),
+        baudrate_(baudrate) {
 
-        // If the port is already open, throw an error
-        if (is_open_) {
-            throw DeviceException(Status::DALREADY_OPEN, "open_port");
+        // Register the SIGINT handler
+        std::signal(SIGINT, sigint_handler);
+
+        if (!serial_port_ || !serial_port_->is_open()) {
+            throw DeviceException(Status::DNOT_OPEN, "USBAdapter: serial port not open");
         }
 
-        // Open the serial port
-        fd_ = open(usb_device_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-        if (fd_ == -1) {
-            // Get errno and throw as DeviceException
-            throw DeviceException(Status::DNOT_FOUND,
-                "open_port: " + std::string(std::strerror(errno)));
-        }
-        is_open_ = true;
-        is_configured_ = false; // Port is not configured yet
-
-        // Log success
-        std::fprintf(stdout, "Serial port %s opened successfully.\n", usb_device_.c_str());
+        is_configured_ = true;  // Port is already configured by RealSerialPort
     }
 
-    void USBAdapter::configure_port() {
-        // Shared lock to check state
-        std::shared_lock<std::shared_mutex> read_lock(state_mutex_);
+    std::unique_ptr<USBAdapter> USBAdapter::create(const std::string& usb_dev,
+        SerialBaud baudrate) {
+        // Create real serial port (auto-opens and configures)
+        auto serial_port = std::make_unique<RealSerialPort>(usb_dev, baudrate);
 
-        // If the port is not open, throw an error
-        if (!is_open_ || fd_ == -1) {
-            throw DeviceException(Status::DNOT_OPEN, "configure_port: port not open");
-        }
-
-        // Unlock shared, acquire unique for configuration
-        read_lock.unlock();
-        std::unique_lock<std::shared_mutex> write_lock(state_mutex_);
-
-        // Re-check after acquiring unique lock (double-check pattern)
-        if (!is_open_ || fd_ == -1) {
-            throw DeviceException(Status::DNOT_OPEN, "configure_port: port not open");
-        }
-
-        // Get current port settings
-        int result = ioctl(fd_, TCGETS2, &tty_);
-        if (result != 0) {
-            throw DeviceException(Status::DNOT_OPEN,
-                "configure_port: ioctl TCGETS2 failed: " + std::string(std::strerror(errno)));
-        }
-
-        // Convert SerialBaud enum to speed_t
-        speed_t baud = to_speed_t(baudrate_);
-
-        // <<< Set port parameters according to Waveshare C example code
-        tty_.c_cflag &= ~CBAUD; // # Clear current baud rate bits
-        //tty_.c_cflag &= ~CSIZE; // # Clear current character size bits
-        tty_.c_cflag = BOTHER // # Use custom baud rate
-            | CS8         // # Use payload with 8 data bits
-            | CSTOPB;         // # Use 2 stop bits
-        tty_.c_iflag = IGNPAR;  // # Ignore framing and parity errors
-        tty_.c_oflag = 0;    // # No output processing
-        tty_.c_lflag = 0;   // # Non-canonical mode, no echo, no signals
-        tty_.c_ispeed = baud;           // # Set input baud rate
-        tty_.c_ospeed = baud;   // # Set output baud rate
-
-        // Apply the settings to the port
-        result = ioctl(fd_, TCSETS2, &tty_);
-        if (result != 0) {
-            throw DeviceException(Status::DNOT_OPEN,
-                "configure_port: ioctl TCSETS2 failed: " + std::string(std::strerror(errno)));
-        }
-        // Set flag and log success
-        is_configured_ = true;
-        std::fprintf(stdout, "Serial port %s configured successfully at %d baud.\n",
-            usb_device_.c_str(), static_cast<int>(baudrate_));
+        // Create adapter with injected port
+        return std::unique_ptr<USBAdapter>(new USBAdapter(std::move(serial_port), usb_dev,
+            baudrate));
     }
 
-    void USBAdapter::close_port() {
-        // Exclusive lock for state modification
-        std::unique_lock<std::shared_mutex> lock(state_mutex_);
-
-        // If the port is not open, throw an error
-        if (!is_open_ || fd_ == -1) {
-            throw DeviceException(Status::DNOT_OPEN, "close_port: port not open");
-        }
-
-        // Close the serial port
-        if (close(fd_) == -1) {
-            // Get errno and throw as DeviceException
-            throw DeviceException(Status::DNOT_OPEN,
-                "close_port: " + std::string(std::strerror(errno)));
-        }
-        fd_ = -1;
-        is_open_ = false;
-        is_configured_ = false;
-
-        // Log success
-        std::fprintf(stdout, "Serial port %s closed successfully.\n", usb_device_.c_str());
-    }
+    // ===================================================================
+    // Port management methods (removed - now in RealSerialPort)
+    // ===================================================================
 
     // # Signal handling
     void USBAdapter::sigint_handler(int signum) {
@@ -134,7 +68,7 @@ namespace waveshare {
         // Shared lock to check state
         {
             std::shared_lock<std::shared_mutex> state_lock(state_mutex_);
-            if (!is_open_ || !is_configured_ || fd_ == -1) {
+            if (!serial_port_ || !serial_port_->is_open() || !is_configured_) {
                 throw DeviceException(Status::DNOT_OPEN, "write_bytes: port not open/configured");
             }
         }
@@ -142,9 +76,9 @@ namespace waveshare {
         // Exclusive write lock - prevents concurrent writes
         std::lock_guard<std::mutex> write_lock(write_mutex_);
 
-        ssize_t bytes_written = write(fd_, data, size);
+        ssize_t bytes_written = serial_port_->write(data, size);
         if (bytes_written < 0) {
-            throw DeviceException(Status::DNOT_OPEN,
+            throw DeviceException(Status::DWRITE_ERROR,
                 "write_bytes: " + std::string(std::strerror(errno)));
         }
 
@@ -159,7 +93,7 @@ namespace waveshare {
         // Shared lock to check state
         {
             std::shared_lock<std::shared_mutex> state_lock(state_mutex_);
-            if (!is_open_ || !is_configured_ || fd_ == -1) {
+            if (!serial_port_ || !serial_port_->is_open() || !is_configured_) {
                 throw DeviceException(Status::DNOT_OPEN, "read_bytes: port not open/configured");
             }
         }
@@ -167,13 +101,13 @@ namespace waveshare {
         // Exclusive read lock - prevents concurrent reads
         std::lock_guard<std::mutex> read_lock(read_mutex_);
 
-        ssize_t bytes_read = read(fd_, buffer, size);
+        ssize_t bytes_read = serial_port_->read(buffer, size, -1);  // -1 = use port's default timeout
         if (bytes_read < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // Non-blocking read with no data available
                 return 0;
             }
-            throw DeviceException(Status::DNOT_OPEN,
+            throw DeviceException(Status::DREAD_ERROR,
                 "read_bytes: " + std::string(std::strerror(errno)));
         }
 

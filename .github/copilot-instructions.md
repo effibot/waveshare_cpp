@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Currently supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge available for integration.
+A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge fully implemented.
 
-**Current State:** Serial communication complete (121 passing tests), USBAdapter thread-safe, exception-based error handling fully implemented.
+**Current State:** Serial communication complete, SocketCAN bridge implemented with bidirectional forwarding, 132 passing tests (100%, 0.19s runtime), hardware-independent testing via dependency injection.
 
 **Error Handling:** Uses standard C++ exception-based error handling with typed exception hierarchy (WaveshareException → ProtocolException/DeviceException/TimeoutException/CANException). See README.md for details.
 
@@ -168,12 +168,25 @@ auto frame = FrameBuilder<FixedFrame>()
 
 ## Future Work / Next Phase
 
-### SocketCAN Bridge (In Progress)
-**Branch**: `socketcan` (planned next phase)
-- Implement `WaveshareSocketCANBridge` class to bridge serial USB adapter ↔ SocketCAN interface
-- Bidirectional threading: `usb_to_socketcan_loop()` and `socketcan_to_usb_loop()`
-- Frame conversion: Waveshare frames ↔ `struct can_frame` (Linux SocketCAN)
-- See `prompts/00_quick_start.md` and `prompts/01_architecture_overview.md` for design requirements
+### SocketCAN Bridge ✅ COMPLETED
+**Branch**: `socketcan` (current branch)
+- **Status**: Fully implemented and tested
+- **Features**:
+  - Bidirectional frame conversion (Waveshare ↔ SocketCAN)
+  - Configuration management (environment variables, .env files)
+  - Socket lifecycle management with proper cleanup
+  - USB adapter integration
+  - Performance statistics tracking (atomic counters)
+  - Dual-threaded forwarding (USB→CAN and CAN→USB)
+  - Lifecycle management (start/stop/destructor)
+  - Mock-based testing (no hardware required)
+- **Architecture**:
+  - `SocketCANBridge` class bridges USB adapter ↔ Linux SocketCAN
+  - `usb_to_socketcan_loop()` and `socketcan_to_usb_loop()` threads
+  - Frame conversion via `SocketCANHelper` (Waveshare frames ↔ `struct can_frame`)
+  - Dependency injection with `ISerialPort` and `ICANSocket` interfaces
+- **Testing**: 132 tests, 100% passing, 0.19s runtime (no hardware dependencies)
+- See `doc/REFACTORING_COMPLETE.md` for implementation details
 
 ### CANOpen Middleware (Future)
 - Translation layer between CANOpen protocol and Waveshare frames
@@ -240,7 +253,9 @@ cd build && ctest --output-on-failure
 - Structure: `TEST_CASE("Description", "[tag]")` with fixtures for shared setup
 - Assertions: `REQUIRE(expr)` (fails test), `CHECK(expr)` (continues), `REQUIRE_THROWS_AS(expr, Exception)`
 - See `test/CATCH2_REFERENCE.md` for patterns
-- **Current test count**: 68 passing tests covering all frame types and USBAdapter
+- **Current test count**: 132 passing tests (100%, 0.19s runtime)
+- **Test architecture**: Dependency injection with mocks (MockSerialPort, MockCANSocket) - no hardware required
+- See `doc/TEST_SUITE_QUICK_REFERENCE.md` for daily use guide
 
 ### Testing Hardware
 Scripts in `scripts/` provide manual testing tools:

@@ -12,6 +12,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include "../include/pattern/socketcan_bridge.hpp"
 #include "../include/pattern/bridge_config.hpp"
+#include "test_utils.hpp"
 #include <thread>
 #include <chrono>
 #include <atomic>
@@ -54,17 +55,18 @@ TEST_CASE("BridgeConfig - Validation with valid configuration", "[unit][config][
         REQUIRE_NOTHROW(config.validate());
     }
 
-    SECTION("Various valid USB device paths validate (if they exist)") {
+    SECTION("Various valid USB device paths validate") {
         BridgeConfig config = BridgeConfig::create_default();
 
-        // Note: validate() checks if device exists via access()
-        // We can only test with paths that exist on the system
-        config.usb_device_path = "/dev/null";  // Always exists
+        // validate() no longer checks hardware existence
+        config.usb_device_path = "/dev/null";
         REQUIRE_NOTHROW(config.validate());
 
-        // Non-existent paths will throw DeviceException
+        config.usb_device_path = "/dev/ttyUSB0";
+        REQUIRE_NOTHROW(config.validate());
+
         config.usb_device_path = "/dev/nonexistent_device_xyz";
-        REQUIRE_THROWS_AS(config.validate(), DeviceException);
+        REQUIRE_NOTHROW(config.validate());  // No hardware check!
     }
 }
 
@@ -323,24 +325,6 @@ TEST_CASE("BridgeStatisticsSnapshot - Value copying", "[unit][statistics][snapsh
 // Phase 9.4: Lifecycle Tests (API Contracts)
 // ===================================================================
 
-TEST_CASE("SocketCANBridge - Constructor validation", "[unit][lifecycle][construction]") {
-
-    SECTION("Invalid SocketCAN interface throws DeviceException") {
-        BridgeConfig config = BridgeConfig::create_default();
-        config.socketcan_interface = "nonexistent_xyz_12345";
-        config.usb_device_path = "/dev/null";  // Will fail before USB access
-
-        REQUIRE_THROWS_AS(SocketCANBridge(config), DeviceException);
-    }
-
-    SECTION("Invalid config throws during validation") {
-        BridgeConfig config = BridgeConfig::create_default();
-        config.socketcan_interface = "";  // Invalid
-
-        REQUIRE_THROWS_AS(SocketCANBridge(config), std::invalid_argument);
-    }
-}
-
 TEST_CASE("SocketCANBridge - Lifecycle state contracts", "[unit][lifecycle][state]") {
 
     SECTION("is_running() API contract - initially false") {
@@ -545,26 +529,19 @@ TEST_CASE("SocketCANBridge - Thread safety contracts", "[unit][threading][safety
 
 TEST_CASE("SocketCANBridge - Exception types and messages", "[unit][errors][exceptions]") {
 
-    SECTION("DeviceException for invalid SocketCAN interface") {
+    SECTION("MockCANSocket accepts any interface name") {
         BridgeConfig config = BridgeConfig::create_default();
         config.socketcan_interface = "invalid_if_999";
 
-        try {
-            SocketCANBridge bridge(config);
-            FAIL("Should have thrown DeviceException");
-        } catch (const DeviceException& e) {
-            REQUIRE_THAT(e.what(), Catch::Matchers::ContainsSubstring("SocketCAN"));
-        }
-        catch (...) {
-            FAIL("Wrong exception type");
-        }
+        // Mocks don't validate interface names - this is expected behavior
+        REQUIRE_NOTHROW(waveshare::test::create_bridge_with_mocks(config));
     }
 
     SECTION("std::invalid_argument for config validation failure") {
         BridgeConfig config = BridgeConfig::create_default();
         config.socketcan_interface = "";
 
-        REQUIRE_THROWS_AS(SocketCANBridge(config), std::invalid_argument);
+        REQUIRE_THROWS_AS(waveshare::test::create_bridge_with_mocks(config), std::invalid_argument);
     }
 
     SECTION("Exception messages are descriptive") {

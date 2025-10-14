@@ -30,13 +30,9 @@ namespace waveshare {
             throw std::invalid_argument("USB device path cannot be empty");
         }
 
-        // Check if USB device exists (use access() syscall)
-        if (access(usb_device_path.c_str(), F_OK) != 0) {
-            throw DeviceException(
-                Status::DNOT_FOUND,
-                "USB device not found: " + usb_device_path
-            );
-        }
+        // NOTE: Hardware existence checks (access(), socket creation) are NOT done here.
+        // Those belong in factory methods (create()) or during actual connection.
+        // validate() should only check LOGICAL validity of configuration parameters.
 
         // Validate timeouts
         if (usb_read_timeout_ms == 0) {

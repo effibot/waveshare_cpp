@@ -25,6 +25,7 @@
 
 #include "bridge_config.hpp"
 #include "usb_adapter.hpp"
+#include "../io/can_socket.hpp"
 #include "../frame/config_frame.hpp"
 #include "../frame/variable_frame.hpp"
 
@@ -139,12 +140,24 @@ namespace waveshare {
     class SocketCANBridge {
         public:
             /**
-             * @brief Construct bridge with configuration
-             * @param config Bridge configuration (validated on construction)
+             * @brief Constructor with dependency injection
+             * @param config Bridge configuration
+             * @param can_socket Injected CAN socket (real or mock)
+             * @param usb_adapter Injected USB adapter
+             * @throws std::invalid_argument if config is invalid
+             */
+            SocketCANBridge(const BridgeConfig& config,
+                std::unique_ptr<ICANSocket> can_socket,
+                std::unique_ptr<USBAdapter> usb_adapter);
+
+            /**
+             * @brief Factory method to create bridge with real hardware
+             * @param config Bridge configuration
+             * @return std::unique_ptr<SocketCANBridge> Configured bridge ready to use
              * @throws DeviceException if USB device or SocketCAN interface unavailable
              * @throws std::invalid_argument if config is invalid
              */
-            explicit SocketCANBridge(const BridgeConfig& config);
+            static std::unique_ptr<SocketCANBridge> create(const BridgeConfig& config);
 
             /**
              * @brief Destructor - ensures clean shutdown
@@ -156,9 +169,9 @@ namespace waveshare {
             SocketCANBridge(const SocketCANBridge&) = delete;
             SocketCANBridge& operator=(const SocketCANBridge&) = delete;
 
-            // Custom move operations to properly handle socket FD
-            SocketCANBridge(SocketCANBridge&& other) noexcept;
-            SocketCANBridge& operator=(SocketCANBridge&& other) noexcept;
+            // Delete move operations (BridgeStatistics has atomic members that can't be moved)
+            SocketCANBridge(SocketCANBridge&& other) noexcept = delete;
+            SocketCANBridge& operator=(SocketCANBridge&& other) noexcept = delete;
 
             /**
              * @brief Get current configuration
@@ -170,19 +183,25 @@ namespace waveshare {
              * @brief Check if SocketCAN socket is open
              * @return bool True if socket is open
              */
-            bool is_socketcan_open() const { return socketcan_fd_ >= 0; }
+            bool is_socketcan_open() const {
+                return can_socket_ && can_socket_->is_open();
+            }
 
             /**
              * @brief Get SocketCAN file descriptor
              * @return int File descriptor or -1 if closed
              */
-            int get_socketcan_fd() const { return socketcan_fd_; }
+            int get_socketcan_fd() const {
+                return can_socket_ ? can_socket_->get_fd() : -1;
+            }
 
             /**
-             * @brief Get USB adapter
-             * @return std::shared_ptr<USBAdapter> Adapter pointer (may be null)
+             * @brief Get USB adapter (non-owning pointer)
+             * @return USBAdapter* Adapter pointer (may be null)
              */
-            std::shared_ptr<USBAdapter> get_adapter() const { return adapter_; }
+            USBAdapter* get_adapter() const {
+                return adapter_.get();
+            }
 
             /**
              * @brief Get statistics snapshot
@@ -241,11 +260,9 @@ namespace waveshare {
             // === Configuration ===
             BridgeConfig config_;
 
-            // === SocketCAN Socket Management ===
-            int socketcan_fd_ = -1;
-
-            // === USB Adapter Management ===
-            std::shared_ptr<USBAdapter> adapter_;
+            // === I/O Abstractions ===
+            std::unique_ptr<ICANSocket> can_socket_;  // Injected CAN socket (real or mock)
+            std::unique_ptr<USBAdapter> adapter_;     // USB adapter
 
             // === Statistics ===
             BridgeStatistics stats_;
@@ -280,25 +297,7 @@ namespace waveshare {
              */
             void verify_adapter_config();
 
-            /**
-             * @brief Open SocketCAN socket and bind to interface
-             * @param interface SocketCAN interface name (e.g., "can0", "vcan0")
-             * @return int Socket file descriptor
-             * @throws DeviceException on socket creation, bind, or ioctl failure
-             */
-            int open_socketcan_socket(const std::string& interface);
-
-            /**
-             * @brief Set receive timeout on SocketCAN socket
-             * @throws DeviceException on setsockopt failure
-             */
-            void set_socketcan_timeouts();
-
-            /**
-             * @brief Close SocketCAN socket
-             * @throws DeviceException on close failure
-             */
-            void close_socketcan_socket();
+            // === Socket management methods (removed - now in RealCANSocket) ===
 
             /**
              * @brief USB to SocketCAN forwarding loop (runs in thread)
