@@ -1,13 +1,17 @@
 # Waveshare USB-CAN-A C++ Library - AI Coding Instructions
 
+## Project Overview
+
+A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Currently supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge planned for next phase.
+
+**Current State:** Serial communication complete (68 passing tests), USBAdapter thread-safe, ready for SocketCAN integration.
+
 ## Architecture Overview
 
-This library implements a type-safe C++ interface for Waveshare USB-CAN-A device protocol using **State-First Architecture** with CRTP (Curiously Recurring Template Pattern) and modern C++ patterns.
+### State-First Design Philosophy (Critical!)
 
-### State-First Design Philosophy
-
-**Critical Concept**: Frames store runtime state internally and generate protocol buffers on-demand:
-- **State objects** (`CoreState`, `DataState`) hold runtime values (CAN ID, DLC, data, etc.)
+**Core Principle**: Frames are stateful objects that generate protocol buffers on-demand—never store buffers directly:
+- **State objects** (`CoreState`, `DataState`, `ConfigState`) hold runtime values (CAN ID, DLC, data, baud rates, etc.)
 - **No persistent buffers** - serialization happens on-demand via `serialize()`
 - **Getters/setters modify state only** - no direct buffer manipulation
 - Protocol bytes are generated during `impl_serialize()` and parsed during `impl_deserialize()`
@@ -39,9 +43,27 @@ std::vector<std::uint8_t> CoreInterface<Frame>::serialize() const {
 }
 ```
 
+### USBAdapter: Thread-Safe Serial Communication
+
+`USBAdapter` (`include/pattern/usb_adapter.hpp`) provides frame-level API over serial I/O:
+- **Thread-safety**: `state_mutex_` (shared_mutex) protects open/configured state, `write_mutex_`/`read_mutex_` serialize I/O
+- **Lifecycle**: Constructor auto-opens/configures port, destructor auto-closes
+- **POSIX termios2**: Uses custom baud rates (up to 2Mbps) via `TCGETS2`/`TCSETS2` ioctls
+- **Frame API**: `send_frame<T>()`, `receive_fixed_frame()`, `receive_variable_frame()` - all thread-safe
+- **Signal handling**: Static `stop_flag` (atomic) set by `SIGINT`, checked via `should_stop()`
+
+```cpp
+// Typical usage (see scripts/wave_reader.cpp)
+USBAdapter adapter("/dev/ttyUSB0", SerialBaud::BAUD_2M);  // Auto-opens & configures
+auto frame_res = adapter.receive_variable_frame(1000);    // 1s timeout
+if (frame_res.success()) {
+    std::cout << frame_res.value().to_string() << "\n";
+}
+```
+
 ### Frame Types & Protocol
 
-Three frame types implement Waveshare serial protocol (see `README.md` and `doc/diagrams/`):
+Three frame types implement Waveshare serial protocol (see `README.md` and `doc/diagrams/*.md`):
 
 1. **FixedFrame** (20 bytes): `[START][HEADER][TYPE][CAN_VERS][FORMAT][ID(4)][DLC][DATA(8)][RESERVED][CHECKSUM]`
    - Always 8-byte DATA field (pad with zeros if DLC < 8)
@@ -52,6 +74,8 @@ Three frame types implement Waveshare serial protocol (see `README.md` and `doc/
    - TYPE byte encodes: `[0xC0][IsExtended][Format][DLC(4 bits)]` - computed via `VarTypeHelper::encode()`
 
 3. **ConfigFrame** (20 bytes): USB adapter settings (baud rate, mode, filters, masks)
+   - Sent to adapter via `send_frame(config_frame)` to configure CAN bus parameters
+   - See `include/frame/config_frame.hpp` for baud rate, mode, filter/mask settings
 
 ### Critical Implementation Patterns
 
@@ -80,7 +104,7 @@ static_assert(has_checksum_v<ConfigFrame>);
 ```
 
 #### 3. Result Type (Error Chaining)
-`Result<T>` automatically builds error call stacks:
+`Result<T>` (`include/template/result.hpp`) automatically builds error call stacks:
 ```cpp
 Result<void> deserialize(span<const std::uint8_t> buffer) {
     if (buffer.size() != 20) {
@@ -104,7 +128,7 @@ Result<void> deserialize(span<const std::uint8_t> buffer) {
 
 ### Builder Pattern (Validated Construction)
 
-`FrameBuilder<Frame>` uses `FrameBuilderState` to accumulate parameters before construction:
+`FrameBuilder<Frame>` (`include/pattern/frame_builder.hpp`) uses `FrameBuilderState` to accumulate parameters:
 ```cpp
 auto frame = FrameBuilder<FixedFrame>()
     .with_can_version(CANVersion::STD_FIXED)
@@ -119,20 +143,27 @@ auto frame = FrameBuilder<FixedFrame>()
 .with_id(...)         // Only available for DataInterface frames
 ```
 
-**Validation Strategy**: Type-safe enums and setter methods prevent invalid states during frame construction. Explicit validators (in `stash/validator/`) are deprecated - validation may be added to deserialization in the future.
+**Validation Strategy**: Type-safe enums and setter methods prevent invalid states during frame construction.
 
-## Future Work / Not Yet Implemented
+## Future Work / Next Phase
 
-### Serial Communication Layer
-- USB device detection and connection management
-- Serial read/write operations for frame transmission
-- Device configuration via ConfigFrame
+### SocketCAN Bridge (In Progress)
+**Branch**: `socketcan` (planned next phase)
+- Implement `WaveshareSocketCANBridge` class to bridge serial USB adapter ↔ SocketCAN interface
+- Bidirectional threading: `usb_to_socketcan_loop()` and `socketcan_to_usb_loop()`
+- Frame conversion: Waveshare frames ↔ `struct can_frame` (Linux SocketCAN)
+- See `prompts/00_quick_start.md` and `prompts/01_architecture_overview.md` for design requirements
 
-### CANOpen Middleware
+### CANOpen Middleware (Future)
 - Translation layer between CANOpen protocol and Waveshare frames
 - SDO (Service Data Object) message handling
-- PDO (Process Data Object) message handling
+- PDO (Process Data Object) message handling  
 - NMT (Network Management) operations
+
+### ROS2 Integration (Future)
+- Lifecycle node to manage SocketCAN bridge
+- Integration with `ros2_socketcan` for CAN bus communication
+- See `prompts/04_ros2_integration.md` for planning details
 
 ## Important Conventions
 
@@ -170,16 +201,35 @@ cd build && ctest --output-on-failure
 
 # Run specific test
 ./build/test/test_fixed_frame
+
+# Run example scripts (requires USB device)
+./build/scripts/wave_reader -d /dev/ttyUSB0 -s 2000000 -b 1000000 -f variable
+./build/scripts/wave_writer -d /dev/ttyUSB1 -s 2000000 -b 1000000 -f variable
 ```
+
+### VS Code Tasks
+- **CMake: Configure** - Run CMake configuration
+- **CMake: Build** - Build all targets (default build task)
+- **CMake: Clean** - Clean build artifacts
+- **Build and Run Reader** - Build and launch wave_reader with default args
+- **Build and Run Writer** - Build and launch wave_writer with default args
 
 ### Testing with Catch2
 - Tests in `test/*.cpp`, using Catch2 v3 (auto-fetched via `FetchContent`)
 - Structure: `TEST_CASE("Description", "[tag]")` with fixtures for shared setup
 - Assertions: `REQUIRE(expr)` (fails test), `CHECK(expr)` (continues), `REQUIRE_THROWS_AS(expr, Exception)`
 - See `test/CATCH2_REFERENCE.md` for patterns
+- **Current test count**: 68 passing tests covering all frame types and USBAdapter
 
-### Code Coverage (TODO)
-- CMake option `CODE_COVERAGE=ON` exists but coverage collection needs implementation
+### Testing Hardware
+Scripts in `scripts/` provide manual testing tools:
+- `wave_reader.cpp` - Read frames from USB adapter (fixed or variable mode)
+- `wave_writer.cpp` - Send frames to USB adapter (fixed or variable mode)  
+- Both use `script_utils.hpp` for argument parsing and adapter initialization
+- Supports SIGINT (Ctrl+C) for graceful shutdown via `USBAdapter::should_stop()`
+
+### Code Coverage
+- CMake option `CODE_COVERAGE=ON` exists but implementation pending
 - Intended workflow: `cmake -DCODE_COVERAGE=ON` + coverage report generation
 
 ### Code Formatting
@@ -204,6 +254,10 @@ cd build && ctest --output-on-failure
 - `include/interface/serialization_helpers.hpp` - `ChecksumHelper`, `VarTypeHelper` (static)
 - `include/pattern/frame_builder.hpp` - Fluent builder with SFINAE-restricted methods
 
+**USB Communication**:
+- `include/pattern/usb_adapter.hpp` + `src/usb_adapter.cpp` - Thread-safe serial I/O with frame API
+- `scripts/script_utils.hpp` - Shared utilities for wave_reader/wave_writer scripts
+
 **Protocol & Errors**:
 - `include/enums/protocol.hpp` - All protocol constants (`START=0xAA`, `CANVersion`, `Format`, etc.)
 - `include/enums/error.hpp` - `Status` enum (errors like `WBAD_CHECKSUM`, `WBAD_ID`)
@@ -211,6 +265,7 @@ cd build && ctest --output-on-failure
 **Documentation**:
 - `README.md` - Protocol details, field descriptions, CAN ID construction
 - `doc/diagrams/*.md` - Mermaid diagrams (packet structure, class hierarchy)
+- `prompts/INDEX.md` - Development handoff guide, includes SocketCAN planning prompts
 
 ## When Working With This Codebase
 
@@ -220,3 +275,4 @@ cd build && ctest --output-on-failure
 4. **New validation**: Add to `impl_deserialize()` methods, return `Result<void>` with specific `Status` on error
 5. **Error propagation**: Always use `Result<T>`, provide context string in factory methods (`Result<T>::error(status, "context")`)
 6. **Testing new features**: Add `TEST_CASE` in `test/test_<frame_type>.cpp`, use fixtures for shared state
+7. **Thread-safe operations**: Follow USBAdapter pattern - use `std::shared_mutex` for state, separate mutexes for I/O

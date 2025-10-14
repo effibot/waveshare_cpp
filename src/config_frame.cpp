@@ -12,7 +12,7 @@
 
 #include "../include/frame/config_frame.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // === Serialization Implementation ===
 

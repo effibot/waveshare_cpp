@@ -16,7 +16,7 @@
 #include <iostream>
 #include <getopt.h>
 
-namespace USBCANBridge {
+namespace waveshare {
 
 // === Command-Line Argument Parsing ===
 
@@ -159,7 +159,7 @@ namespace USBCANBridge {
                 if (result.fail()) {
                     std::cerr << "Invalid CAN baudrate: " << optarg << "\n";
                     std::cerr <<
-                            "Supported: 10000, 20000, 50000, 100000, 125000, 200000, 250000, 400000, 500000, 800000, 1000000\n";
+                        "Supported: 10000, 20000, 50000, 100000, 125000, 200000, 250000, 400000, 500000, 800000, 1000000\n";
                     return Result<ScriptConfig>::error(Status::WBAD_CAN_BAUD, "parse_arguments");
                 }
                 config.can_baudrate = result.value();

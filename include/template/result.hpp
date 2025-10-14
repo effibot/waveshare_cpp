@@ -12,7 +12,7 @@
 #include <variant>
 #include <vector>
 
-namespace USBCANBridge {
+namespace waveshare {
 
 /**
  * @brief Enhanced Result type with automatic error chaining.

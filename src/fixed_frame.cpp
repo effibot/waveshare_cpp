@@ -11,7 +11,7 @@
 
 #include "../include/frame/fixed_frame.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // === Serialization Implementation ===
 

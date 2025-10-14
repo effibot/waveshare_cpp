@@ -32,7 +32,7 @@
 using namespace boost;
 
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Core state for all frame types

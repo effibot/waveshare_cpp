@@ -20,7 +20,7 @@
 
 using namespace boost;
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Data state for data frames (FixedFrame, VariableFrame)

@@ -17,7 +17,7 @@
 #include "../include/interface/serialization_helpers.hpp"
 #include <array>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // ============================================================================
 // TEST FIXTURE - Minimal shared setup

@@ -18,7 +18,7 @@
 #include "../interface/data.hpp"
 #include "../interface/serialization_helpers.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
     /**
      * @brief Variable Frame implementation (5-15 bytes)
      *

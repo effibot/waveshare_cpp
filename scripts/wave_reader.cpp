@@ -10,7 +10,7 @@
  */
 #include "script_utils.hpp"
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 int main(int argc, char* argv[]) {
     // Parse command-line arguments

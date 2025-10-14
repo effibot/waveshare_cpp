@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 template<typename Frame>
 void print_frame(const std::string& name, const Frame& frame) {

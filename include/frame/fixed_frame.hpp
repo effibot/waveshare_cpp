@@ -18,7 +18,7 @@
 #include "../interface/data.hpp"
 #include "../interface/serialization_helpers.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
     /**
      * @brief Fixed Frame implementation (20 bytes)
      *
@@ -116,4 +116,4 @@ namespace USBCANBridge {
              */
             void impl_clear();
     };
-} // namespace USBCANBridge
+} // namespace waveshare

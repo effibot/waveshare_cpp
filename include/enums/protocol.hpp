@@ -28,10 +28,10 @@
 using namespace boost;
 
 /**
- * @namespace USBCANBridge
+ * @namespace waveshare
  * @brief Namespace containing all USB-CAN bridge related functionality.
  */
-namespace USBCANBridge {
+namespace waveshare {
     // === Utility Defines ===
     #define MAX_DATA_LENGTH 8
     #define MIN_CAN_ID 0x0
@@ -431,4 +431,4 @@ namespace USBCANBridge {
     }
 
 
-}     // namespace USBCANBridge
+}     // namespace waveshare

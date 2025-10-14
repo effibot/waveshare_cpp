@@ -16,7 +16,7 @@
 #pragma once
 #include "core.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Config state for configuration frames

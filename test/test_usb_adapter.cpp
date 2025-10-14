@@ -12,7 +12,7 @@
 #include <vector>
 #include <atomic>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // NOTE: USBAdapter provides low-level I/O primitives for SocketCANBridge.
 // I/O methods (write_bytes, read_bytes, read_exact, flush_port) are private

@@ -24,7 +24,7 @@
 
 using namespace boost;
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Static helper for checksum computation and validation
@@ -267,4 +267,4 @@ namespace USBCANBridge {
             }
     };
 
-}  // namespace USBCANBridge
+}  // namespace waveshare

@@ -19,7 +19,7 @@
 #include <array>
 #include <vector>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // ============================================================================
 // TEST FIXTURE - Minimal shared setup

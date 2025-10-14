@@ -13,7 +13,7 @@
 #include <chrono>
 #include <thread>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 int main(int argc, char* argv[]) {
     // Parse command-line arguments

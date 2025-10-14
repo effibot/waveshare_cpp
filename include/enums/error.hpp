@@ -1,7 +1,7 @@
 /**
  * @file error.hpp
  * @author Andrea Efficace (andrea.efficace1@gmail.com)
- * @brief Error codes for USBCANBridge to be used as template parameter.
+ * @brief Error codes for waveshare to be used as template parameter.
  * @version 0.1
  * @date 2025-09-11
  */
@@ -11,11 +11,11 @@
 #include <system_error>
 #include <type_traits>
 
-namespace USBCANBridge {
+namespace waveshare {
 
 /**
  * @enum Status
- * @brief Enumeration of error codes for USBCANBridge operations.
+ * @brief Enumeration of error codes for waveshare operations.
  * These codes can be converted to std::error_code for integration with
  * standard error handling mechanisms.
  * @note SUCCESS (0) indicates no error.
@@ -60,12 +60,12 @@ namespace USBCANBridge {
 
 /**
  * @class USBCANErrorCategory
- * @brief Custom error category for USBCANBridge errors.
+ * @brief Custom error category for waveshare errors.
  */
     class USBCANErrorCategory : public std::error_category {
         public:
             const char*name() const noexcept override {
-                return "USBCANBridge::Status";
+                return "waveshare::Status";
             }
 
             std::string message(int ev) const override {
@@ -145,18 +145,18 @@ namespace USBCANBridge {
         return {static_cast<int>(e), usbcan_category()};
     }
 
-}; // namespace USBCANBridge
+}; // namespace waveshare
 
 // Register the enum for use with std::error_code
 namespace std {
-    template<> struct is_error_code_enum<USBCANBridge::Status> : true_type {};
+    template<> struct is_error_code_enum<waveshare::Status> : true_type {};
 }; // namespace std
 
 /**
  * Usage example:
  * #include "ros2_waveshare/error.hpp"
  *
- * std::error_code ec = USBCANBridge::Status::DNOT_FOUND;
+ * std::error_code ec = waveshare::Status::DNOT_FOUND;
  * if (ec) {
  *     std::cerr << "Error: " << ec.message() << std::endl;
  * }

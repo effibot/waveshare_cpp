@@ -18,7 +18,7 @@
 #include "../interface/config.hpp"
 #include "../interface/serialization_helpers.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
     /**
      * @brief Configuration frame for the USB-CAN Bridge (20 bytes)
      *

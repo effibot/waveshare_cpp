@@ -31,7 +31,7 @@
 #include <shared_mutex>
 #include <chrono>
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief USB-CAN Adapter interface

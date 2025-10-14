@@ -12,7 +12,7 @@
 #include "../include/pattern/usb_adapter.hpp"
 
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // # Port management methods
 
