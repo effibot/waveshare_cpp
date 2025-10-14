@@ -44,7 +44,7 @@ bool vcan0_exists() {
 bool test_usb_device_exists() {
     try {
         // .env is copied to test build directory by CMake
-        auto config = BridgeConfig::load(".env");
+        auto config = BridgeConfig::load("../.env");
         const char* device = config.usb_device_path.c_str();
 
         // Check if device exists and is accessible
@@ -63,7 +63,7 @@ bool test_usb_device_exists() {
 std::string get_test_usb_device() {
     try {
         // .env is copied to test build directory by CMake
-        auto config = BridgeConfig::load(".env");
+        auto config = BridgeConfig::load("../.env");
         return config.usb_device_path;
     } catch (...) {
         return "/dev/ttyUSB0";  // Fallback default
