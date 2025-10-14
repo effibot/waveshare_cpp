@@ -13,8 +13,10 @@
 #include <unistd.h>
 #include <cstring>
 #include <cerrno>
+#include <iostream>
 
 #include "../include/pattern/socketcan_bridge.hpp"
+#include "../include/interface/socketcan_helpers.hpp"
 #include "../include/exception/waveshare_exception.hpp"
 #include "../include/pattern/frame_builder.hpp"
 
@@ -40,6 +42,16 @@ namespace waveshare {
     }
 
     SocketCANBridge::~SocketCANBridge() {
+        // Stop threads if running
+        try {
+            if (running_.load(std::memory_order_relaxed)) {
+                stop();
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error stopping bridge in destructor: "
+                      << e.what() << std::endl;
+        }
+
         // Gracefully close SocketCAN socket
         try {
             if (socketcan_fd_ >= 0) {
@@ -47,7 +59,6 @@ namespace waveshare {
             }
         } catch (const std::exception& e) {
             // Log error but don't throw from destructor
-            // In production, use proper logging framework
             std::cerr << "Error closing SocketCAN socket in destructor: "
                       << e.what() << std::endl;
         }
@@ -265,4 +276,149 @@ namespace waveshare {
         stats_.reset();
     }
 
+    // === Bridge Lifecycle Management ===
+
+    void SocketCANBridge::start() {
+        // Check if already running
+        bool expected = false;
+        if (!running_.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
+            throw std::logic_error("Bridge is already running");
+        }
+
+        // Spawn forwarding threads
+        usb_to_socketcan_thread_ = std::thread(&SocketCANBridge::usb_to_socketcan_loop, this);
+        socketcan_to_usb_thread_ = std::thread(&SocketCANBridge::socketcan_to_usb_loop, this);
+    }
+
+    void SocketCANBridge::stop() {
+        // Check if running
+        if (!running_.load(std::memory_order_relaxed)) {
+            return; // Already stopped
+        }
+
+        // Signal threads to stop
+        running_.store(false, std::memory_order_relaxed);
+
+        // Join threads
+        if (usb_to_socketcan_thread_.joinable()) {
+            usb_to_socketcan_thread_.join();
+        }
+        if (socketcan_to_usb_thread_.joinable()) {
+            socketcan_to_usb_thread_.join();
+        }
+    }
+
+    // === Forwarding Threads ===
+
+    void SocketCANBridge::usb_to_socketcan_loop() {
+        while (running_.load(std::memory_order_relaxed)) {
+            try {
+                // Read frame from USB adapter (with timeout)
+                auto frame = adapter_->receive_variable_frame(config_.usb_read_timeout_ms);
+                stats_.usb_rx_frames.fetch_add(1, std::memory_order_relaxed);
+
+                // Convert to SocketCAN format
+                struct can_frame cf = SocketCANHelper::to_socketcan(frame);
+
+                // Write to SocketCAN socket
+                ssize_t bytes = write(socketcan_fd_, &cf, sizeof(struct can_frame));
+                if (bytes != sizeof(struct can_frame)) {
+                    stats_.socketcan_tx_errors.fetch_add(1, std::memory_order_relaxed);
+                    if (bytes < 0) {
+                        std::cerr << "[USB→CAN] Socket write error: " << std::strerror(errno) <<
+                            std::endl;
+                    } else {
+                        std::cerr << "[USB→CAN] Partial write: " << bytes << " bytes" << std::endl;
+                    }
+                } else {
+                    stats_.socketcan_tx_frames.fetch_add(1, std::memory_order_relaxed);
+
+                    // Invoke callback if set
+                    if (usb_to_socketcan_callback_) {
+                        usb_to_socketcan_callback_(frame, cf);
+                    }
+                }
+
+            } catch (const TimeoutException&) {
+                // Expected - USB read timeout allows checking running_ flag
+                continue;
+            }
+            catch (const ProtocolException& e) {
+                stats_.conversion_errors.fetch_add(1, std::memory_order_relaxed);
+                std::cerr << "[USB→CAN] Conversion error: " << e.what() << std::endl;
+            }
+            catch (const std::exception& e) {
+                stats_.usb_rx_errors.fetch_add(1, std::memory_order_relaxed);
+                std::cerr << "[USB→CAN] USB RX error: " << e.what() << std::endl;
+            }
+        }
+    }
+
+    void SocketCANBridge::socketcan_to_usb_loop() {
+        struct can_frame cf;
+        fd_set readfds;
+        struct timeval timeout;
+
+        while (running_.load(std::memory_order_relaxed)) {
+            try {
+                // Set up select() for timeout handling
+                FD_ZERO(&readfds);
+                FD_SET(socketcan_fd_, &readfds);
+
+                // Configure timeout
+                timeout.tv_sec = config_.socketcan_read_timeout_ms / 1000;
+                timeout.tv_usec = (config_.socketcan_read_timeout_ms % 1000) * 1000;
+
+                // Wait for socket to be readable (with timeout)
+                int ret = select(socketcan_fd_ + 1, &readfds, nullptr, nullptr, &timeout);
+
+                if (ret < 0) {
+                    // Select error
+                    stats_.socketcan_rx_errors.fetch_add(1, std::memory_order_relaxed);
+                    std::cerr << "[CAN→USB] select() error: " << std::strerror(errno) << std::endl;
+                    continue;
+                } else if (ret == 0) {
+                    // Timeout - continue to check running_ flag
+                    continue;
+                }
+
+                // Socket is readable - read CAN frame
+                ssize_t bytes = read(socketcan_fd_, &cf, sizeof(struct can_frame));
+                if (bytes < 0) {
+                    stats_.socketcan_rx_errors.fetch_add(1, std::memory_order_relaxed);
+                    std::cerr << "[CAN→USB] Socket read error: " << std::strerror(errno) <<
+                        std::endl;
+                    continue;
+                } else if (bytes != sizeof(struct can_frame)) {
+                    stats_.socketcan_rx_errors.fetch_add(1, std::memory_order_relaxed);
+                    std::cerr << "[CAN→USB] Partial read: " << bytes << " bytes" << std::endl;
+                    continue;
+                }
+
+                stats_.socketcan_rx_frames.fetch_add(1, std::memory_order_relaxed);
+
+                // Convert to Waveshare VariableFrame
+                auto frame = SocketCANHelper::from_socketcan(cf);
+
+                // Send to USB adapter
+                adapter_->send_frame(frame);
+                stats_.usb_tx_frames.fetch_add(1, std::memory_order_relaxed);
+
+                // Invoke callback if set
+                if (socketcan_to_usb_callback_) {
+                    socketcan_to_usb_callback_(cf, frame);
+                }
+
+            } catch (const ProtocolException& e) {
+                stats_.conversion_errors.fetch_add(1, std::memory_order_relaxed);
+                std::cerr << "[CAN→USB] Conversion error: " << e.what() << std::endl;
+            }
+            catch (const std::exception& e) {
+                stats_.usb_tx_errors.fetch_add(1, std::memory_order_relaxed);
+                std::cerr << "[CAN→USB] USB TX error: " << e.what() << std::endl;
+            }
+        }
+    }
+
 } // namespace waveshare
+

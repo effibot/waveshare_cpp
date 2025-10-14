@@ -355,210 +355,6 @@ namespace waveshare {
 }
 ```
 
-### Migration Checklist
-
-#### Phase 0: Create Exception Infrastructure ✅
-- [x] **0.1 Create exception header**
-  - [x] Create `include/exception/waveshare_exception.hpp`
-  - [x] Define base `WaveshareException` class with `Status` member
-  - [x] Define derived classes: `ProtocolException`, `DeviceException`, `TimeoutException`, `CANException`
-  - [x] Implement constructors that take `Status` and context string
-  - [x] Implement `what()` to format: `"[Status] context: message"`
-
-- [x] **0.2 Create exception factory helpers**
-  - [x] Add static factory methods to base class:
-    - [x] `static void throw_if_error(Status status, const std::string& context)`
-    - [x] `static void throw_error(Status status, const std::string& context)` 
-  - [x] Map Status codes to appropriate exception types
-
-- [x] **0.3 Update error.hpp**
-  - [x] Keep `Status` enum (still useful for categorization)
-  - [x] Keep `USBCANErrorCategory` (useful for std::error_code interop if needed)
-
-- [x] **0.4 Create exception tests**
-  - [x] Test all exception types can be thrown and caught
-  - [x] Test factory functions route to correct exception types
-  - [x] Test polymorphic catching (all exceptions catchable as WaveshareException)
-  - [x] Verify error messages contain status and context
-  - [x] All tests passing (76/76)
-
-#### Phase 1: Update Serialization Helpers ✅
-- [x] **1.1 Update ChecksumHelper**
-  - [x] Change `validate()` from `Result<void>` to `void` (throws on error)
-  - [x] Throw `ProtocolException` on checksum mismatch
-  - [x] Remove Result includes
-
-- [x] **1.2 Update VarTypeHelper**
-  - [x] Change return types from `Result<T>` to `T`
-  - [x] Throw `ProtocolException` on invalid type byte
-  - [x] Update tests to use `REQUIRE_THROWS_AS()`
-
-#### Phase 2: Update Frame Interfaces ✅
-- [x] **2.1 Update CoreInterface**
-  - [x] Change `deserialize()` from `Result<void>` to `void`
-  - [x] Change `impl_deserialize()` from `Result<void>` to `void`
-  - [x] Remove Result includes
-  - [x] Update all derived implementations
-
-- [x] **2.2 Update DataInterface**
-  - [x] Change all setters to throw on invalid input (instead of returning Result)
-  - [x] Validate in setters: throw `ProtocolException` on bad ID, DLC, etc.
-  - [x] Update tests
-
-- [x] **2.3 Update ConfigInterface**
-  - [x] Same pattern as DataInterface
-  - [x] Throw on invalid baud rates, modes, filters
-
-#### Phase 3: Update Frame Implementations ✅
-- [x] **3.1 Update FixedFrame**
-  - [x] Change `impl_deserialize()` to `void` (throws on error)
-  - [x] Replace all `return Result<void>::error(...)` with `throw ProtocolException(...)`
-  - [x] Replace all `if (res.fail()) return res;` with try-catch or let exceptions propagate
-  - [x] Update `src/fixed_frame.cpp`
-  - [x] Update tests: use `REQUIRE_THROWS_AS()` for invalid frames
-
-- [x] **3.2 Update VariableFrame**
-  - [x] Same pattern as FixedFrame
-  - [x] Update `src/variable_frame.cpp`
-  - [x] Update tests
-
-- [x] **3.3 Update ConfigFrame**
-  - [x] Same pattern
-  - [x] Update `src/config_frame.cpp`
-  - [x] Update tests
-
-#### Phase 4: Update FrameBuilder ✅
-- [x] **4.1 Update builder validation**
-  - [x] Change `build()` from `Result<Frame>` to `Frame` (throws on validation error)
-  - [x] Throw exceptions for missing required fields (uses `std::runtime_error`)
-  - [x] Validation works correctly with exceptions
-  - [x] Tests pass with exception handling
-
-**Note**: FrameBuilder uses `std::runtime_error` for validation errors instead of `ProtocolException`. This is acceptable as builder errors are different from protocol parsing errors.
-
-#### Phase 5: Update USBAdapter ✅
-- [x] **5.1 Update low-level I/O methods**
-  - [x] Change `write_bytes()` from `Result<int>` to `int` (throws on error)
-  - [x] Change `read_bytes()` from `Result<int>` to `int`
-  - [x] Change `read_exact()` from `Result<void>` to `void`
-  - [x] Throw `DeviceException` on I/O errors
-  - [x] Throw `TimeoutException` on timeout
-
-- [x] **5.2 Update port management**
-  - [x] Change `open_port()` from `Result<void>` to `void`
-  - [x] Change `configure_port()` from `Result<void>` to `void`
-  - [x] Change `close_port()` from `Result<void>` to `void`
-  - [x] Throw `DeviceException` on errors
-
-- [x] **5.3 Update frame-level API**
-  - [x] Change `send_frame()` from `Result<void>` to `void`
-  - [x] Change `receive_fixed_frame()` from `Result<FixedFrame>` to `FixedFrame`
-  - [x] Change `receive_variable_frame()` from `Result<VariableFrame>` to `VariableFrame`
-  - [x] Update `src/usb_adapter.cpp`
-
-- [x] **5.4 Constructor**
-  - [x] Constructor already throws on error
-  - [x] Error messages are clear and contextual
-
-- [x] **5.5 Tests**
-  - [x] Tests already use exception patterns (REQUIRE_NOTHROW, etc.)
-  - [x] All 121 tests passing with exception-based error handling
-  - [x] No changes needed to test/test_usb_adapter.cpp
-
-**Status**: COMPLETED - All USBAdapter methods now use exceptions. All tests passing.
-
-#### Phase 6: Update Scripts ✅
-- [x] **6.1 Update wave_reader.cpp**
-  - [x] Replace Result checking with try-catch blocks
-  - [x] Catch exceptions at thread loop boundary
-  - [x] Log exception messages using `e.what()`
-
-- [x] **6.2 Update wave_writer.cpp**
-  - [x] Same pattern as wave_reader
-  - [x] Cleaner error handling in main loop
-
-- [x] **6.3 Update script_utils.hpp**
-  - [x] Update helper functions to throw instead of returning Result
-  - [x] Update parse_arguments() and initialize_adapter()
-
-**Status**: COMPLETED - All scripts migrated to exception-based error handling.
-
-#### Phase 7: Remove Result Infrastructure ✅
-- [x] **7.1 Remove Result header**
-  - [x] Delete `include/template/result.hpp`
-  - [x] Remove all `#include "../template/result.hpp"` from source files
-  - [x] Verify no remaining includes
-
-- [x] **7.2 Remove deprecated methods**
-  - [x] Remove `deserialize_result()` from `include/interface/core.hpp`
-  - [x] All code using direct exception-based `deserialize()`
-
-**Status**: COMPLETED - Result<T> infrastructure fully removed. 121 tests passing.
-
-#### Phase 8: Update Documentation ✅
-- [x] **8.1 Clean rebuild**
-  - [x] Run `cmake --build build --target clean`
-  - [x] Reconfigure: `cmake -S . -B build`
-  - [ ] Build: `cmake --build build`
-  - [ ] Verify no compilation errors
-
-- [ ] **8.2 Run full test suite**
-  - [ ] `cd build && ctest --output-on-failure`
-  - [ ] Verify all 68+ tests pass
-  - [ ] Fix any remaining issues
-
-#### Phase 9: Benefits for SocketCAN Bridge ⬜
-After migration, the SocketCAN bridge implementation will be simpler:
-
-**Before (with Result<T>):**
-```cpp
-void usb_to_socketcan_loop() {
-    while (running_) {
-        auto frame_result = adapter_->receive_variable_frame(timeout);
-        if (frame_result.fail()) {
-            if (frame_result.error() == Status::WTIMEOUT) continue;
-            stats_.usb_rx_errors++;
-            log_error(frame_result.describe());
-            continue;
-        }
-        auto cf_result = SocketCANHelper::to_socketcan(frame_result.value());
-        if (cf_result.fail()) {
-            stats_.conversion_errors++;
-            continue;
-        }
-        // ... write to socket
-    }
-}
-```
-
-**After (with exceptions):**
-```cpp
-void usb_to_socketcan_loop() {
-    while (running_) {
-        try {
-            auto frame = adapter_->receive_variable_frame(timeout);
-            auto cf = SocketCANHelper::to_socketcan(frame);
-            // ... write to socket
-            stats_.usb_rx_frames++;
-        } catch (const TimeoutException&) {
-            continue;  // Expected, just retry
-        } catch (const WaveshareException& e) {
-            stats_.usb_rx_errors++;
-            log_error(e.what());
-        }
-    }
-}
-```
-
-**Benefits:**
-- 40% less code in loops
-- No Result wrapper overhead
-- Clear separation of timeout (expected) vs errors
-- Natural exception propagation to thread boundary
-- Easier to add new error types
-
----
-
 ## SocketCAN Bridge Implementation Checklist
 
 ### Phase 1: Foundation - SocketCAN Conversion Helpers ✅
@@ -792,102 +588,107 @@ void usb_to_socketcan_loop() {
 
 ---
 
-### Phase 6: USB → SocketCAN Forwarding Thread ⬜
+### Phase 6: USB → SocketCAN Forwarding Thread ✅
 **Goal**: Implement thread that reads from USB and forwards to SocketCAN
 
-- [ ] **6.1 Declare thread method and member**
-  - [ ] Declare private method `void usb_to_socketcan_loop()`
-  - [ ] Add member `std::thread usb_to_socketcan_thread_`
+**Status**: COMPLETED - Forwarding thread implemented with proper error handling
 
-- [ ] **6.2 Implement usb_to_socketcan_loop()**
-  - [ ] Add while loop: `while (running_.load(std::memory_order_relaxed))`
-  - [ ] Wrap body in try-catch block
-  - [ ] Call `adapter_->receive_variable_frame(config_.usb_read_timeout_ms)`
-  - [ ] Catch `TimeoutException`: continue loop (expected behavior)
-  - [ ] Catch other exceptions: increment `stats_.usb_rx_errors`, log error, continue
-  - [ ] On success: increment `stats_.usb_rx_frames`
-  - [ ] Convert to `can_frame` via `SocketCANHelper::to_socketcan()` (may throw)
-  - [ ] Write to SocketCAN: `write(socketcan_fd_, &cf, sizeof(struct can_frame))`
-  - [ ] Handle write error: throw `DeviceException`, caught in outer try-catch
-  - [ ] On success: increment `stats_.socketcan_tx_frames`
+- [x] **6.1 Declare thread method and member**
+  - [x] Declared private method `void usb_to_socketcan_loop()`
+  - [x] Added member `std::thread usb_to_socketcan_thread_`
+  - [x] Added `std::atomic<bool> running_{false}` for thread control
 
-- [ ] **6.3 Add error logging**
-  - [ ] Include `<iostream>` for stderr logging
-  - [ ] Log errors with context (USB read, conversion, SocketCAN write)
-  - [ ] Use `Result::describe()` for detailed error messages
+- [x] **6.2 Implement usb_to_socketcan_loop()**
+  - [x] While loop with `running_` flag check
+  - [x] Try-catch wrapper around body
+  - [x] Call `adapter_->receive_variable_frame(config_.usb_read_timeout_ms)`
+  - [x] Catch `TimeoutException`: continue (expected, checks running_ flag)
+  - [x] On success: increment `stats_.usb_rx_frames`
+  - [x] Convert via `SocketCANHelper::to_socketcan()`
+  - [x] Write to socket via `write(socketcan_fd_, &cf, sizeof(can_frame))`
+  - [x] On success: increment `stats_.socketcan_tx_frames`
+  - [x] On error: increment appropriate error counters
 
-- [ ] **6.4 Add thread exception handling**
-  - [ ] Wrap entire loop in try-catch
-  - [ ] Catch and log any unexpected exceptions
-  - [ ] Set `running_ = false` on fatal errors
+- [x] **6.3 Add error logging**
+  - [x] Log USB read errors with context
+  - [x] Log conversion errors (increment `conversion_errors`)
+  - [x] Log SocketCAN write errors
+  - [x] Use `std::cerr` with `[USB→CAN]` prefix
+
+- [x] **6.4 Add thread exception handling**
+  - [x] Separate catch blocks for different exception types
+  - [x] TimeoutException handled gracefully (continue loop)
+  - [x] ProtocolException increments conversion_errors
+  - [x] Other exceptions increment usb_rx_errors
 
 ---
 
-### Phase 7: SocketCAN → USB Forwarding Thread ⬜
+### Phase 7: SocketCAN → USB Forwarding Thread ✅
 **Goal**: Implement thread that reads from SocketCAN and forwards to USB
 
-- [ ] **7.1 Declare thread method and member**
-  - [ ] Declare private method `void socketcan_to_usb_loop()`
-  - [ ] Add member `std::thread socketcan_to_usb_thread_`
+**Status**: COMPLETED - Bidirectional forwarding active
 
-- [ ] **7.2 Implement socket read with timeout**
-  - [ ] Use `select()` or `poll()` to wait for socket readability
-  - [ ] Set timeout from `config_.socketcan_read_timeout_ms`
-  - [ ] Handle timeout: continue loop (check `running_` again)
-  - [ ] Handle select error: log and continue
+- [x] **7.1 Declare thread method and member**
+  - [x] Declared private method `void socketcan_to_usb_loop()`
+  - [x] Added member `std::thread socketcan_to_usb_thread_`
 
-- [ ] **7.3 Implement socketcan_to_usb_loop()**
-  - [ ] Add while loop: `while (running_.load(std::memory_order_relaxed))`
-  - [ ] Wrap body in try-catch block
-  - [ ] Call `select()` with timeout to check socket
-  - [ ] If readable, call `read(socketcan_fd_, &cf, sizeof(struct can_frame))`
-  - [ ] On read error: throw `DeviceException`, caught and logged
-  - [ ] On success: increment `stats_.socketcan_rx_frames`
-  - [ ] Convert to VariableFrame via `SocketCANHelper::from_socketcan()` (may throw)
-  - [ ] Send via `adapter_->send_frame(frame)` (may throw)
-  - [ ] Catch exceptions: increment appropriate error counter, log, continue
-  - [ ] On success: increment `stats_.usb_tx_frames`
+- [x] **7.2 Implement socket read with timeout**
+  - [x] Use `select()` to wait for socket readability
+  - [x] Set timeout from `config_.socketcan_read_timeout_ms`
+  - [x] Handle timeout: continue loop (checks `running_` flag)
+  - [x] Handle select error: log and continue
 
-- [ ] **7.4 Add error handling**
-  - [ ] Same logging and exception handling as USB → SocketCAN thread
+- [x] **7.3 Implement socketcan_to_usb_loop()**
+  - [x] While loop with `running_` flag check
+  - [x] Try-catch wrapper around body
+  - [x] Call `select()` with `fd_set` and `timeval` timeout
+  - [x] If readable: `read(socketcan_fd_, &cf, sizeof(can_frame))`
+  - [x] On read error: increment `stats_.socketcan_rx_errors`, log, continue
+  - [x] On success: increment `stats_.socketcan_rx_frames`
+  - [x] Convert via `SocketCANHelper::from_socketcan()`
+  - [x] Send via `adapter_->send_frame(frame)`
+  - [x] On success: increment `stats_.usb_tx_frames`
+
+- [x] **7.4 Add error handling**
+  - [x] Log errors with `[CAN→USB]` prefix
+  - [x] ProtocolException increments conversion_errors
+  - [x] Send errors increment usb_tx_errors
+  - [x] Socket errors increment socketcan_rx_errors
 
 ---
 
-### Phase 8: Bridge Lifecycle Management ⬜
+### Phase 8: Bridge Lifecycle Management ✅
 **Goal**: Implement start(), stop(), and destructor
 
-- [ ] **8.1 Add running flag and constructor**
-  - [ ] Add member `std::atomic<bool> running_{false}`
-  - [ ] Implement constructor:
-    - [ ] Store `BridgeConfig` copy
-    - [ ] Initialize USB adapter (constructor throws on failure)
-    - [ ] Open SocketCAN socket (throws on failure)
-    - [ ] Set socket timeouts (throws on failure)
-    - [ ] Configure USB adapter (send ConfigFrame, throws on failure)
-    - [ ] All exceptions propagate to caller
+**Status**: COMPLETED - Full lifecycle control implemented
 
-- [ ] **8.2 Implement start() method**
-  - [ ] Check if already running: throw `std::logic_error` if `running_ == true`
-  - [ ] Set `running_ = true`
-  - [ ] Spawn `usb_to_socketcan_thread_` with `usb_to_socketcan_loop()`
-  - [ ] Spawn `socketcan_to_usb_thread_` with `socketcan_to_usb_loop()`
+- [x] **8.1 Add running flag and constructor**
+  - [x] Added `std::atomic<bool> running_{false}` member
+  - [x] Constructor initializes adapter and socket (doesn't start threads)
+  - [x] All exceptions propagate to caller
 
-- [ ] **8.3 Implement stop() method**
-  - [ ] Check if not running: return early if `running_ == false`
-  - [ ] Set `running_ = false`
-  - [ ] Join `usb_to_socketcan_thread_` (block until complete)
-  - [ ] Join `socketcan_to_usb_thread_`
-  - [ ] Close SocketCAN socket
-  - [ ] Return statistics snapshot (or throw on join failure)
+- [x] **8.2 Implement start() method**
+  - [x] Check if already running: throw `std::logic_error` if `running_ == true`
+  - [x] Set `running_ = true` using `compare_exchange_strong`
+  - [x] Spawn `usb_to_socketcan_thread_` with `usb_to_socketcan_loop()`
+  - [x] Spawn `socketcan_to_usb_thread_` with `socketcan_to_usb_loop()`
 
-- [ ] **8.4 Implement destructor**
-  - [ ] Call `stop()` if `running_ == true`
-  - [ ] Catch and log any exceptions (destructors should not throw)
-  - [ ] Ensure all resources are cleaned up
+- [x] **8.3 Implement stop() method**
+  - [x] Check if running: return early if `running_ == false`
+  - [x] Set `running_ = false`
+  - [x] Join `usb_to_socketcan_thread_` (blocks until complete)
+  - [x] Join `socketcan_to_usb_thread_`
 
-- [ ] **8.5 Add query methods**
-  - [ ] Implement `bool is_running() const` (return `running_.load()`)
-  - [ ] Implement `BridgeConfig get_config() const` (return copy of config)
+- [x] **8.4 Implement destructor**
+  - [x] Call `stop()` if `running_ == true`
+  - [x] Catch and log exceptions (destructors don't throw)
+  - [x] Close SocketCAN socket
+  - [x] Ensure all resources cleaned up
+
+- [x] **8.5 Add query methods**
+  - [x] Implemented `bool is_running() const` (returns `running_.load()`)
+  - [x] `get_config()` already exists ✅
+  - [x] `get_statistics()` already exists ✅
 
 ---
 

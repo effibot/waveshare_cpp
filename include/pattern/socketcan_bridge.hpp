@@ -20,10 +20,13 @@
 #include <mutex>
 #include <sstream>
 #include <iomanip>
+#include <functional>
+#include <linux/can.h>
 
 #include "bridge_config.hpp"
 #include "usb_adapter.hpp"
 #include "../frame/config_frame.hpp"
+#include "../frame/variable_frame.hpp"
 
 namespace waveshare {
 
@@ -192,6 +195,48 @@ namespace waveshare {
              */
             void reset_statistics();
 
+            /**
+             * @brief Start the bridge forwarding threads
+             * @throws std::logic_error if bridge is already running
+             */
+            void start();
+
+            /**
+             * @brief Stop the bridge forwarding threads
+             * Blocks until both threads have joined
+             */
+            void stop();
+
+            /**
+             * @brief Check if bridge is currently running
+             * @return bool True if forwarding threads are active
+             */
+            bool is_running() const { return running_.load(std::memory_order_relaxed); }
+
+            /**
+             * @brief Set callback for USB → SocketCAN frame forwarding
+             * @param callback Function called with (VariableFrame, can_frame) when frame is forwarded
+             *
+             * Callback signature: void(const VariableFrame& usb_frame, const ::can_frame& socketcan_frame)
+             * Called from USB→SocketCAN thread, should be thread-safe and non-blocking.
+             */
+            void set_usb_to_socketcan_callback(std::function<void(const VariableFrame&,
+                const ::can_frame&)> callback) {
+                usb_to_socketcan_callback_ = std::move(callback);
+            }
+
+            /**
+             * @brief Set callback for SocketCAN → USB frame forwarding
+             * @param callback Function called with (can_frame, VariableFrame) when frame is forwarded
+             *
+             * Callback signature: void(const ::can_frame& socketcan_frame, const VariableFrame& usb_frame)
+             * Called from SocketCAN→USB thread, should be thread-safe and non-blocking.
+             */
+            void set_socketcan_to_usb_callback(std::function<void(const ::can_frame&,
+                const VariableFrame&)> callback) {
+                socketcan_to_usb_callback_ = std::move(callback);
+            }
+
         private:
             // === Configuration ===
             BridgeConfig config_;
@@ -204,6 +249,17 @@ namespace waveshare {
 
             // === Statistics ===
             BridgeStatistics stats_;
+
+            // === Threading ===
+            std::atomic<bool> running_{false};
+            std::thread usb_to_socketcan_thread_;
+            std::thread socketcan_to_usb_thread_;
+
+            // === Callbacks ===
+            std::function<void(const VariableFrame&,
+                const ::can_frame&)> usb_to_socketcan_callback_;
+            std::function<void(const ::can_frame&,
+                const VariableFrame&)> socketcan_to_usb_callback_;
 
             /**
              * @brief Initialize and configure USB adapter
@@ -243,6 +299,23 @@ namespace waveshare {
              * @throws DeviceException on close failure
              */
             void close_socketcan_socket();
+
+            /**
+             * @brief USB to SocketCAN forwarding loop (runs in thread)
+             *
+             * Continuously reads frames from USB adapter and forwards to SocketCAN socket.
+             * Runs while running_ flag is true. Handles timeouts and errors gracefully.
+             */
+            void usb_to_socketcan_loop();
+
+            /**
+             * @brief SocketCAN to USB forwarding loop (runs in thread)
+             *
+             * Continuously reads frames from SocketCAN socket and forwards to USB adapter.
+             * Uses select() for timeout handling. Runs while running_ flag is true.
+             */
+            void socketcan_to_usb_loop();
     };
 
 } // namespace waveshare
+
