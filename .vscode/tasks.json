@@ -88,6 +88,49 @@
                 "CMake: Build"
             ],
             "detail": "Build and run the current file in debug mode"
+        },
+        {
+            "type": "shell",
+            "label": "Build and Run Reader",
+            "command": "${workspaceFolder}/build/scripts/wave_reader",
+            "args": [
+                "-d",
+                "/dev/ttyUSB0",
+                "-s",
+                "2000000",
+                "-b",
+                "1000000",
+                "-f",
+                "variable",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CMake: Build"
+            ],
+            "detail": "Build and run the wave_reader script"
+        },
+        {
+            "type": "shell",
+            "label": "Build and Run Write",
+            "command": "${workspaceFolder}/build/scripts/wave_writer",
+            "args": [
+                "-d",
+                "/dev/ttyUSB1",
+                "-s",
+                "2000000",
+                "-b",
+                "1000000",
+                "-f",
+                "variable",
+            ]
         }
     ],
     "version": "2.0.0"
