@@ -58,67 +58,63 @@ namespace waveshare {
 /**
  * @brief Parse serial baudrate from string
  * @param baud_str String representation of baudrate
- * @return Result<SerialBaud> Parsed baudrate or error
+ * @return SerialBaud Parsed baudrate
+ * @throws std::invalid_argument if baudrate is not supported
  */
-    inline Result<SerialBaud> parse_serial_baudrate(const std::string& baud_str) {
-        try {
-            int baud = std::stoi(baud_str);
-            switch (baud) {
-            case 9600:    return Result<SerialBaud>::success(SerialBaud::BAUD_9600);
-            case 19200:   return Result<SerialBaud>::success(SerialBaud::BAUD_19200);
-            case 38400:   return Result<SerialBaud>::success(SerialBaud::BAUD_38400);
-            case 57600:   return Result<SerialBaud>::success(SerialBaud::BAUD_57600);
-            case 115200:  return Result<SerialBaud>::success(SerialBaud::BAUD_115200);
-            case 153600:  return Result<SerialBaud>::success(SerialBaud::BAUD_153600);
-            case 2000000: return Result<SerialBaud>::success(SerialBaud::BAUD_2M);
-            default:
-                return Result<SerialBaud>::error(Status::UNKNOWN, "parse_serial_baudrate");
-            }
-        } catch (const std::invalid_argument&) {
-            return Result<SerialBaud>::error(Status::UNKNOWN, "parse_serial_baudrate");
+    inline SerialBaud parse_serial_baudrate(const std::string& baud_str) {
+        int baud = std::stoi(baud_str);  // May throw std::invalid_argument
+        switch (baud) {
+        case 9600:    return SerialBaud::BAUD_9600;
+        case 19200:   return SerialBaud::BAUD_19200;
+        case 38400:   return SerialBaud::BAUD_38400;
+        case 57600:   return SerialBaud::BAUD_57600;
+        case 115200:  return SerialBaud::BAUD_115200;
+        case 153600:  return SerialBaud::BAUD_153600;
+        case 2000000: return SerialBaud::BAUD_2M;
+        default:
+            throw std::invalid_argument("Unsupported serial baudrate: " + baud_str);
         }
     }
 
 /**
  * @brief Parse CAN baudrate from string
  * @param baud_str String representation of baudrate
- * @return Result<CANBaud> Parsed baudrate or error
+ * @return CANBaud Parsed baudrate
+ * @throws std::invalid_argument if baudrate is not supported
  */
-    inline Result<CANBaud> parse_can_baudrate(const std::string& baud_str) {
-        try {
-            int baud = std::stoi(baud_str);
-            switch (baud) {
-            case 10000:   return Result<CANBaud>::success(CANBaud::BAUD_10K);
-            case 20000:   return Result<CANBaud>::success(CANBaud::BAUD_20K);
-            case 50000:   return Result<CANBaud>::success(CANBaud::BAUD_50K);
-            case 100000:  return Result<CANBaud>::success(CANBaud::BAUD_100K);
-            case 125000:  return Result<CANBaud>::success(CANBaud::BAUD_125K);
-            case 200000:  return Result<CANBaud>::success(CANBaud::BAUD_200K);
-            case 250000:  return Result<CANBaud>::success(CANBaud::BAUD_250K);
-            case 400000:  return Result<CANBaud>::success(CANBaud::BAUD_400K);
-            case 500000:  return Result<CANBaud>::success(CANBaud::BAUD_500K);
-            case 800000:  return Result<CANBaud>::success(CANBaud::BAUD_800K);
-            case 1000000: return Result<CANBaud>::success(CANBaud::BAUD_1M);
-            default:
-                return Result<CANBaud>::error(Status::WBAD_CAN_BAUD, "parse_can_baudrate");
-            }
-        } catch (const std::invalid_argument&) {
-            return Result<CANBaud>::error(Status::WBAD_CAN_BAUD, "parse_can_baudrate");
+    inline CANBaud parse_can_baudrate(const std::string& baud_str) {
+        int baud = std::stoi(baud_str);  // May throw std::invalid_argument
+        switch (baud) {
+        case 10000:   return CANBaud::BAUD_10K;
+        case 20000:   return CANBaud::BAUD_20K;
+        case 50000:   return CANBaud::BAUD_50K;
+        case 100000:  return CANBaud::BAUD_100K;
+        case 125000:  return CANBaud::BAUD_125K;
+        case 200000:  return CANBaud::BAUD_200K;
+        case 250000:  return CANBaud::BAUD_250K;
+        case 400000:  return CANBaud::BAUD_400K;
+        case 500000:  return CANBaud::BAUD_500K;
+        case 800000:  return CANBaud::BAUD_800K;
+        case 1000000: return CANBaud::BAUD_1M;
+        default:
+            throw std::invalid_argument("Unsupported CAN baudrate: " + baud_str);
         }
     }
 
 /**
  * @brief Parse frame type from string
  * @param type_str String representation of frame type ("fixed" or "variable")
- * @return Result<bool> True for fixed, false for variable, or error
+ * @return bool True for fixed, false for variable
+ * @throws std::invalid_argument if frame type is invalid
  */
-    inline Result<bool> parse_frame_type(const std::string& type_str) {
+    inline bool parse_frame_type(const std::string& type_str) {
         if (type_str == "fixed") {
-            return Result<bool>::success(true);
+            return true;
         } else if (type_str == "variable") {
-            return Result<bool>::success(false);
+            return false;
         } else {
-            return Result<bool>::error(Status::WBAD_FRAME_TYPE, "parse_frame_type");
+            throw std::invalid_argument("Invalid frame type: " + type_str +
+                " (use 'fixed' or 'variable')");
         }
     }
 
@@ -127,9 +123,10 @@ namespace waveshare {
  * @param argc Argument count
  * @param argv Argument values
  * @param is_reader True for reader script, false for writer script
- * @return Result<ScriptConfig> Parsed configuration or error
+ * @return ScriptConfig Parsed configuration
+ * @throws std::invalid_argument if arguments are invalid
  */
-    inline Result<ScriptConfig> parse_arguments(int argc, char* argv[], bool is_reader) {
+    inline ScriptConfig parse_arguments(int argc, char* argv[], bool is_reader) {
         ScriptConfig config;
         int opt;
 
@@ -143,39 +140,36 @@ namespace waveshare {
                 config.device = optarg;
                 break;
 
-            case 's': {
-                auto result = parse_serial_baudrate(optarg);
-                if (result.fail()) {
+            case 's':
+                try {
+                    config.serial_baudrate = parse_serial_baudrate(optarg);
+                } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid serial baudrate: " << optarg << "\n";
                     std::cerr << "Supported: 9600, 19200, 38400, 57600, 115200, 153600, 2000000\n";
-                    return Result<ScriptConfig>::error(Status::UNKNOWN, "parse_arguments");
+                    throw;
                 }
-                config.serial_baudrate = result.value();
                 break;
-            }
 
-            case 'b': {
-                auto result = parse_can_baudrate(optarg);
-                if (result.fail()) {
+            case 'b':
+                try {
+                    config.can_baudrate = parse_can_baudrate(optarg);
+                } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid CAN baudrate: " << optarg << "\n";
                     std::cerr <<
                         "Supported: 10000, 20000, 50000, 100000, 125000, 200000, 250000, 400000, 500000, 800000, 1000000\n";
-                    return Result<ScriptConfig>::error(Status::WBAD_CAN_BAUD, "parse_arguments");
+                    throw;
                 }
-                config.can_baudrate = result.value();
                 break;
-            }
 
-            case 'f': {
-                auto result = parse_frame_type(optarg);
-                if (result.fail()) {
+            case 'f':
+                try {
+                    config.use_fixed_frames = parse_frame_type(optarg);
+                } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid frame type: " << optarg << "\n";
                     std::cerr << "Use 'fixed' or 'variable'\n";
-                    return Result<ScriptConfig>::error(Status::WBAD_FRAME_TYPE, "parse_arguments");
+                    throw;
                 }
-                config.use_fixed_frames = result.value();
                 break;
-            }
 
             case '?':
                 if (optopt == 'd' || optopt == 's' || optopt == 'b' || optopt == 'f') {
@@ -184,15 +178,15 @@ namespace waveshare {
                 } else {
                     std::cerr << "Unknown option: -" << static_cast<char>(optopt) << "\n";
                 }
-                return Result<ScriptConfig>::error(Status::UNKNOWN, "parse_arguments");
+                throw std::invalid_argument("Invalid command-line option");
 
             default:
                 display_help(argv[0], is_reader);
-                return Result<ScriptConfig>::error(Status::UNKNOWN, "parse_arguments");
+                throw std::invalid_argument("Invalid command-line arguments");
             }
         }
 
-        return Result<ScriptConfig>::success(config);
+        return config;
     }
 
 // === Adapter Configuration ===
@@ -217,38 +211,28 @@ namespace waveshare {
     }
 
 /**
- * @brief Initialize and configure USB adapter
+ * @brief Initialize USB adapter with configuration
  * @param config Script configuration
- * @return Result<USBAdapter*> Configured adapter or error
+ * @return USBAdapter* Initialized adapter
+ * @throws WaveshareException if initialization fails
  */
-    inline Result<USBAdapter*> initialize_adapter(const ScriptConfig& config) {
-        // Create adapter
-        USBAdapter* adapter = new USBAdapter(config.device, config.serial_baudrate);
+    inline USBAdapter* initialize_adapter(const ScriptConfig& config) {
+        auto* adapter = new USBAdapter(config.device, config.serial_baudrate);
 
-        if (!adapter->is_open()) {
-            std::cerr << "Failed to open device: " << config.device << "\n";
-            delete adapter;
-            return Result<USBAdapter*>::error(Status::DNOT_OPEN, "initialize_adapter");
-        }
+        // Create and send configuration frame
+        auto config_frame = FrameBuilder<ConfigFrame>()
+            .with_can_version(config.use_fixed_frames ? CANVersion::STD_FIXED :
+            CANVersion::STD_VARIABLE)
+            .with_type(Type::CONF_FIXED)
+            .with_baud_rate(config.can_baudrate)
+            .with_mode(CANMode::NORMAL)
+            .with_filter(0x00000000)
+            .with_mask(0xFFFFFFFF)
+            .build();
 
-        std::cout << "Device opened: " << config.device << "\n";
-        std::cout << "Serial baudrate: " << static_cast<int>(config.serial_baudrate) << "\n";
-        std::cout << "CAN baudrate: " << static_cast<int>(config.can_baudrate) << "\n";
-        std::cout << "Frame type: " << (config.use_fixed_frames ? "fixed" : "variable") << "\n";
+        adapter->send_frame(config_frame);  // Throws on error
 
-        // Send configuration frame
-        ConfigFrame config_frame = create_config_frame(config);
-        auto send_result = adapter->send_frame(config_frame);
-
-        if (send_result.fail()) {
-            std::cerr << "Failed to send config frame: " << send_result.describe() << "\n";
-            delete adapter;
-            return Result<USBAdapter*>::error(send_result.error(), "initialize_adapter");
-        }
-
-        std::cout << "Config sent >>\t" << config_frame.to_string() << "\n\n";
-
-        return Result<USBAdapter*>::success(adapter);
+        return adapter;
     }
 
 } // namespace USBCANBridge

@@ -16,37 +16,36 @@ namespace waveshare {
 
     // # Port management methods
 
-    Result<void> USBAdapter::open_port() {
+    void USBAdapter::open_port() {
         // Exclusive lock for state modification
         std::unique_lock<std::shared_mutex> lock(state_mutex_);
 
-        // If the port is already open, return an error
+        // If the port is already open, throw an error
         if (is_open_) {
-            return Result<void>::error(Status::DALREADY_OPEN, "open_port");
+            throw DeviceException(Status::DALREADY_OPEN, "open_port");
         }
 
         // Open the serial port
         fd_ = open(usb_device_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
         if (fd_ == -1) {
-            // Get errno and return as Status
-            return Result<void>::error(Status::DNOT_FOUND, std::strerror(errno));
+            // Get errno and throw as DeviceException
+            throw DeviceException(Status::DNOT_FOUND,
+                "open_port: " + std::string(std::strerror(errno)));
         }
         is_open_ = true;
         is_configured_ = false; // Port is not configured yet
 
-        // Return success if the port is opened
+        // Log success
         std::fprintf(stdout, "Serial port %s opened successfully.\n", usb_device_.c_str());
-        return Result<void>::success("Unconfigured port opened successfully");
-
     }
 
-    Result<void> USBAdapter::configure_port() {
+    void USBAdapter::configure_port() {
         // Shared lock to check state
         std::shared_lock<std::shared_mutex> read_lock(state_mutex_);
 
-        // If the port is not open, return an error
+        // If the port is not open, throw an error
         if (!is_open_ || fd_ == -1) {
-            return Result<void>::error(Status::DNOT_OPEN, "configure_port");
+            throw DeviceException(Status::DNOT_OPEN, "configure_port: port not open");
         }
 
         // Unlock shared, acquire unique for configuration
@@ -55,13 +54,14 @@ namespace waveshare {
 
         // Re-check after acquiring unique lock (double-check pattern)
         if (!is_open_ || fd_ == -1) {
-            return Result<void>::error(Status::DNOT_OPEN, "configure_port");
+            throw DeviceException(Status::DNOT_OPEN, "configure_port: port not open");
         }
 
         // Get current port settings
         int result = ioctl(fd_, TCGETS2, &tty_);
         if (result != 0) {
-            return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
+            throw DeviceException(Status::DNOT_OPEN,
+                "configure_port: ioctl TCGETS2 failed: " + std::string(std::strerror(errno)));
         }
 
         // Convert SerialBaud enum to speed_t
@@ -82,36 +82,36 @@ namespace waveshare {
         // Apply the settings to the port
         result = ioctl(fd_, TCSETS2, &tty_);
         if (result != 0) {
-            return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
+            throw DeviceException(Status::DNOT_OPEN,
+                "configure_port: ioctl TCSETS2 failed: " + std::string(std::strerror(errno)));
         }
-        // Set flag and return success if the port is configured
+        // Set flag and log success
         is_configured_ = true;
         std::fprintf(stdout, "Serial port %s configured successfully at %d baud.\n",
             usb_device_.c_str(), static_cast<int>(baudrate_));
-        return Result<void>::success("Port configured successfully");
     }
 
-    Result<void> USBAdapter::close_port() {
+    void USBAdapter::close_port() {
         // Exclusive lock for state modification
         std::unique_lock<std::shared_mutex> lock(state_mutex_);
 
-        // If the port is not open, return an error
+        // If the port is not open, throw an error
         if (!is_open_ || fd_ == -1) {
-            return Result<void>::error(Status::DNOT_OPEN, "close_port");
+            throw DeviceException(Status::DNOT_OPEN, "close_port: port not open");
         }
 
         // Close the serial port
         if (close(fd_) == -1) {
-            // Get errno and return as Status
-            return Result<void>::error(Status::DNOT_OPEN, std::strerror(errno));
+            // Get errno and throw as DeviceException
+            throw DeviceException(Status::DNOT_OPEN,
+                "close_port: " + std::string(std::strerror(errno)));
         }
         fd_ = -1;
         is_open_ = false;
         is_configured_ = false;
 
-        // Return success if the port is closed
+        // Log success
         std::fprintf(stdout, "Serial port %s closed successfully.\n", usb_device_.c_str());
-        return Result<void>::success("Port closed successfully");
     }
 
     // # Signal handling
@@ -126,16 +126,16 @@ namespace waveshare {
 
     // === Thread-safe I/O operations ===
 
-    Result<int> USBAdapter::write_bytes(const std::uint8_t* data, std::size_t size) {
+    int USBAdapter::write_bytes(const std::uint8_t* data, std::size_t size) {
         if (data == nullptr || size == 0) {
-            return Result<int>::error(Status::WBAD_LENGTH, "write_bytes");
+            throw ProtocolException(Status::WBAD_LENGTH, "write_bytes: invalid parameters");
         }
 
         // Shared lock to check state
         {
             std::shared_lock<std::shared_mutex> state_lock(state_mutex_);
             if (!is_open_ || !is_configured_ || fd_ == -1) {
-                return Result<int>::error(Status::DNOT_OPEN, "write_bytes");
+                throw DeviceException(Status::DNOT_OPEN, "write_bytes: port not open/configured");
             }
         }
 
@@ -144,22 +144,23 @@ namespace waveshare {
 
         ssize_t bytes_written = write(fd_, data, size);
         if (bytes_written < 0) {
-            return Result<int>::error(Status::DNOT_OPEN, std::strerror(errno));
+            throw DeviceException(Status::DNOT_OPEN,
+                "write_bytes: " + std::string(std::strerror(errno)));
         }
 
-        return Result<int>::success(static_cast<int>(bytes_written));
+        return static_cast<int>(bytes_written);
     }
 
-    Result<int> USBAdapter::read_bytes(std::uint8_t* buffer, std::size_t size) {
+    int USBAdapter::read_bytes(std::uint8_t* buffer, std::size_t size) {
         if (buffer == nullptr || size == 0) {
-            return Result<int>::error(Status::WBAD_LENGTH, "read_bytes");
+            throw ProtocolException(Status::WBAD_LENGTH, "read_bytes: invalid parameters");
         }
 
         // Shared lock to check state
         {
             std::shared_lock<std::shared_mutex> state_lock(state_mutex_);
             if (!is_open_ || !is_configured_ || fd_ == -1) {
-                return Result<int>::error(Status::DNOT_OPEN, "read_bytes");
+                throw DeviceException(Status::DNOT_OPEN, "read_bytes: port not open/configured");
             }
         }
 
@@ -170,17 +171,18 @@ namespace waveshare {
         if (bytes_read < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // Non-blocking read with no data available
-                return Result<int>::success(0);
+                return 0;
             }
-            return Result<int>::error(Status::DNOT_OPEN, std::strerror(errno));
+            throw DeviceException(Status::DNOT_OPEN,
+                "read_bytes: " + std::string(std::strerror(errno)));
         }
 
-        return Result<int>::success(static_cast<int>(bytes_read));
+        return static_cast<int>(bytes_read);
     }
 
-    Result<void> USBAdapter::read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms) {
+    void USBAdapter::read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms) {
         if (buffer == nullptr || size == 0) {
-            return Result<void>::error(Status::WBAD_LENGTH, "read_exact");
+            throw ProtocolException(Status::WBAD_LENGTH, "read_exact: invalid parameters");
         }
 
         auto start_time = std::chrono::steady_clock::now();
@@ -193,19 +195,14 @@ namespace waveshare {
             ).count();
 
             if (elapsed > timeout_ms) {
-                return Result<void>::error(Status::WTIMEOUT, "read_exact");
+                throw TimeoutException(Status::WTIMEOUT,
+                    "read_exact: timeout after " + std::to_string(elapsed) + "ms");
             }
 
-            // Read remaining bytes
-            auto res = read_bytes(buffer + total_read, size - total_read);
-            if (res.fail()) {
-                return Result<void>::error(res.error(), "read_exact");
-            }
-
-            total_read += res.value();
+            // Read remaining bytes (throws on error)
+            int bytes_read = read_bytes(buffer + total_read, size - total_read);
+            total_read += bytes_read;
         }
-
-        return Result<void>::success();
     }
 
 
@@ -213,26 +210,19 @@ namespace waveshare {
     // === Frame-Level API ===
 
 
-    Result<FixedFrame> USBAdapter::receive_fixed_frame(int timeout_ms) {
-        // Read exactly 20 bytes with timeout
+    FixedFrame USBAdapter::receive_fixed_frame(int timeout_ms) {
+        // Read exactly 20 bytes with timeout (throws on timeout/error)
         std::uint8_t buffer[20];
-        auto read_res = read_exact(buffer, 20, timeout_ms);
-        if (read_res.fail()) {
-            return Result<FixedFrame>::error(read_res, "receive_fixed_frame");
-        }
+        read_exact(buffer, 20, timeout_ms);
 
-        // State-First: Deserialize buffer into frame state
+        // State-First: Deserialize buffer into frame state (throws on protocol error)
         FixedFrame frame;
-        try {
-            frame.deserialize(span<const std::uint8_t>(buffer, 20));
-        } catch (const WaveshareException& e) {
-            return Result<FixedFrame>::error(e.status(), "receive_fixed_frame");
-        }
+        frame.deserialize(span<const std::uint8_t>(buffer, 20));
 
-        return Result<FixedFrame>::success(std::move(frame));
+        return frame;
     }
 
-    Result<VariableFrame> USBAdapter::receive_variable_frame(int timeout_ms) {
+    VariableFrame USBAdapter::receive_variable_frame(int timeout_ms) {
 
         std::vector<std::uint8_t> frame_buffer;
         frame_buffer.reserve(15); // Max VariableFrame size
@@ -247,19 +237,15 @@ namespace waveshare {
             ).count();
 
             if (elapsed > timeout_ms) {
-                return Result<VariableFrame>::error(Status::WTIMEOUT, "receive_variable_frame");
+                throw TimeoutException(Status::WTIMEOUT,
+                    "receive_variable_frame: timeout after " + std::to_string(elapsed) + "ms");
             }
 
-            // Read single byte
+            // Read single byte (throws on error)
             std::uint8_t byte;
-            auto read_res = read_bytes(&byte, 1);
+            int bytes_read = read_bytes(&byte, 1);
 
-            if (read_res.fail()) {
-                return Result<VariableFrame>::error(read_res,
-                    "receive_variable_frame");
-            }
-
-            if (read_res.value() == 0) {
+            if (bytes_read == 0) {
                 continue; // No data available (non-blocking read)
             }
 
@@ -277,23 +263,18 @@ namespace waveshare {
 
             // Check for END byte (0x55)
             if (byte == 0x55) {
-                // State-First: Deserialize buffer into VariableFrame state
+                // State-First: Deserialize buffer into VariableFrame state (throws on protocol error)
                 VariableFrame frame;
-                try {
-                    frame.deserialize(
-                        span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
-                    );
-                } catch (const WaveshareException& e) {
-                    return Result<VariableFrame>::error(e.status(),
-                        "receive_variable_frame");
-                }
+                frame.deserialize(
+                    span<const std::uint8_t>(frame_buffer.data(), frame_buffer.size())
+                );
 
-                return Result<VariableFrame>::success(std::move(frame));
+                return frame;
             }
 
             // Prevent runaway buffer growth
             if (frame_buffer.size() > 15) {
-                return Result<VariableFrame>::error(Status::WBAD_LENGTH,
+                throw ProtocolException(Status::WBAD_LENGTH,
                     "receive_variable_frame: Frame too long");
             }
         }

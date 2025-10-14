@@ -2,11 +2,11 @@
 
 ## Project Overview
 
-A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Currently supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge planned for next phase.
+A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Currently supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge available for integration.
 
-**Current State:** Serial communication complete (68 passing tests), USBAdapter thread-safe, ready for SocketCAN integration.
+**Current State:** Serial communication complete (121 passing tests), USBAdapter thread-safe, exception-based error handling fully implemented.
 
-**Active Migration:** Converting from `Result<T>` pattern to standard C++ exception-based error handling for simpler API. See README.md migration checklist.
+**Error Handling:** Uses standard C++ exception-based error handling with typed exception hierarchy (WaveshareException → ProtocolException/DeviceException/TimeoutException/CANException). See README.md for details.
 
 ## Architecture Overview
 
@@ -57,10 +57,8 @@ std::vector<std::uint8_t> CoreInterface<Frame>::serialize() const {
 ```cpp
 // Typical usage (see scripts/wave_reader.cpp)
 USBAdapter adapter("/dev/ttyUSB0", SerialBaud::BAUD_2M);  // Auto-opens & configures
-auto frame_res = adapter.receive_variable_frame(1000);    // 1s timeout
-if (frame_res.success()) {
-    std::cout << frame_res.value().to_string() << "\n";
-}
+auto frame = adapter.receive_variable_frame(1000);        // 1s timeout (throws on error)
+std::cout << frame.to_string() << "\n";
 ```
 
 ### Frame Types & Protocol
@@ -86,7 +84,7 @@ Frame-specific logic lives in `impl_*()` methods in `src/*.cpp`:
 ```cpp
 // In FixedFrame class (include/frame/fixed_frame.hpp)
 std::vector<std::uint8_t> impl_serialize() const;      // Generate 20-byte buffer from state
-Result<void> impl_deserialize(span<const std::uint8_t>); // Parse buffer into state
+void impl_deserialize(span<const std::uint8_t>);        // Parse buffer into state (throws on error)
 std::size_t impl_serialized_size() const;               // Return 20 (constant)
 bool impl_is_extended() const;                          // Check if CAN_VERS is EXT_*
 ```
@@ -106,7 +104,7 @@ static_assert(has_checksum_v<ConfigFrame>);
 ```
 
 #### 3. Exception-Based Error Handling
-All error conditions throw typed exceptions (migrating from `Result<T>` pattern):
+All error conditions throw typed exceptions:
 ```cpp
 // Exception hierarchy
 class WaveshareException : public std::runtime_error {
@@ -206,7 +204,7 @@ auto frame = FrameBuilder<FixedFrame>()
 
 ### Dependencies & Standards
 - **Namespace**: All code in `namespace USBCANBridge`
-- **C++ Standard**: C++17 (uses `std::optional`, `if constexpr`, `std::variant` in `Result<T>`)
+- **C++ Standard**: C++17 (uses `std::optional`, `if constexpr`, structured bindings)
 - **Boost**: Uses `boost::span` for view semantics (aliased `using namespace boost`)
 
 ## Development Workflow

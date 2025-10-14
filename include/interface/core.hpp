@@ -27,7 +27,6 @@
 
 #include "../enums/protocol.hpp"
 #include "../exception/waveshare_exception.hpp"
-#include "../template/result.hpp"  // TODO: Remove after migration complete
 #include "../template/frame_traits.hpp"
 
 using namespace boost;
@@ -108,23 +107,6 @@ namespace waveshare {
              */
             void deserialize(span<const std::uint8_t> buffer) {
                 derived().impl_deserialize(buffer);
-            }
-
-            /**
-             * @brief Deserialize with Result<void> (deprecated, for backward compatibility)
-             *
-             * @deprecated Use exception-throwing deserialize() instead
-             * @param buffer Byte buffer to deserialize
-             * @return Result<void> Success or error status
-             */
-            [[deprecated("Use exception-throwing deserialize() instead")]]
-            Result<void> deserialize_result(span<const std::uint8_t> buffer) {
-                try {
-                    derived().impl_deserialize(buffer);
-                    return Result<void>::success();
-                } catch (const WaveshareException& e) {
-                    return Result<void>::error(e.status(), e.context());
-                }
             }
 
             /**

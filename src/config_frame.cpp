@@ -51,27 +51,27 @@ namespace waveshare {
         return buffer;
     }
 
-    Result<void> ConfigFrame::impl_deserialize(span<const std::uint8_t> buffer) {
+    void ConfigFrame::impl_deserialize(span<const std::uint8_t> buffer) {
         if (buffer.size() != 20) {
-            return Result<void>::error(Status::WBAD_LENGTH,
+            throw ProtocolException(Status::WBAD_LENGTH,
                 "ConfigFrame requires exactly 20 bytes");
         }
 
         // Validate fixed protocol bytes
         if (buffer[Layout::START] != to_byte(Constants::START_BYTE)) {
-            return Result<void>::error(Status::WBAD_FORMAT,
+            throw ProtocolException(Status::WBAD_FORMAT,
                 "Invalid START byte");
         }
 
         if (buffer[Layout::HEADER] != to_byte(Constants::HEADER)) {
-            return Result<void>::error(Status::WBAD_FORMAT,
+            throw ProtocolException(Status::WBAD_FORMAT,
                 "Invalid HEADER byte");
         }
 
         // Validate checksum
         if (!ChecksumHelper::validate(buffer, Layout::CHECKSUM, Layout::TYPE,
             Layout::RESERVED + 3)) {
-            return Result<void>::error(Status::WBAD_CHECKSUM,
+            throw ProtocolException(Status::WBAD_CHECKSUM,
                 "Checksum validation failed");
         }
 
@@ -91,8 +91,6 @@ namespace waveshare {
         config_state_.mask = bytes_to_int_be<std::uint32_t>(
             buffer.subspan(Layout::MASK, 4)
         );
-
-        return Result<void>::success();
     }
 
 

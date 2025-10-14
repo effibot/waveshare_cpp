@@ -50,7 +50,7 @@ TEST_CASE("USBAdapter - Error handling without device", "[usb_adapter]") {
             FAIL("Should have thrown runtime_error");
         } catch (const std::runtime_error& e) {
             std::string msg = e.what();
-            REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring("Failed"));
+            REQUIRE_THAT(msg, Catch::Matchers::ContainsSubstring("Device not found"));
         }
     }
 }

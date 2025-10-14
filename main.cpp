@@ -3,7 +3,6 @@
 #include "include/frame/config_frame.hpp"
 #include "include/pattern/frame_builder.hpp"
 #include "include/pattern/usb_adapter.hpp"
-#include "include/template/result.hpp"
 #include <stddef.h>
 #include <cstdint>
 #include <iostream>
@@ -162,9 +161,9 @@ int main() {
 
     // Initialize USB adapter (replace with actual device path)
     USBAdapter* adapter = new USBAdapter("/dev/ttyUSB0", SerialBaud:: BAUD_2M);
-    auto send_res = adapter->send_frame(config_frame);
-    if (send_res.fail()) {
-        std::cerr << "Error sending config frame: " << send_res.describe() << "\n";
+    int send_res = adapter->send_frame(config_frame);
+    if (send_res < 0) {
+        std::cerr << "Error sending config frame: " << send_res << "\n";
         return 1;
     }
     std::cout << "Config frame sent successfully.\n";
@@ -179,9 +178,9 @@ int main() {
             .with_data({0x01, 0x02, 0x03, 0x04})
             .build();
         print_frame("Variable Frame", variable_frame);
-        auto send_res = adapter->send_frame(variable_frame);
-        if (send_res.fail()) {
-            std::cerr << "Error sending variable frame: " << send_res.describe() << "\n";
+        int send_res = adapter->send_frame(variable_frame);
+        if (send_res < 0) {
+            std::cerr << "Error sending variable frame: " << send_res << "\n";
         } else {
             std::cout << "Variable frame sent successfully.\n";
         }

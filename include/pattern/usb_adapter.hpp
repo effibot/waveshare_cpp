@@ -13,7 +13,6 @@
 #pragma once
 
 #include "../enums/protocol.hpp"
-#include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
 #include "../frame/config_frame.hpp"
 #include "../frame/fixed_frame.hpp"
@@ -83,31 +82,31 @@ namespace waveshare {
              * character size, and parity. It uses the termios structure to set
              * the desired parameters.
              * Those parameters are set according to the adapter C example code.
-             * @throws std::runtime_error if the configuration fails
+             * @throws DeviceException if the configuration fails
              * @note This function should be called after opening the port.
              */
-            Result<void> configure_port();
+            void configure_port();
 
             /**
              * @brief Close the serial port
              *
              * This function closes the serial port if it is open. It also resets
              * the is_open_ flag to false.
-             * @throws std::runtime_error if closing the port fails
+             * @throws DeviceException if closing the port fails
              * @note This function should be called in the destructor to ensure
              * proper resource cleanup.
              */
-            Result<void> close_port();
+            void close_port();
 
             /**
              * @brief Open the serial port
              *
              * This function opens the serial port specified by usb_device_.
              * It sets the file descriptor and configures the port settings.
-             * @throws std::runtime_error if opening or configuring the port fails
+             * @throws DeviceException if opening or configuring the port fails
              * @note This function should be called before any read/write operations.
              */
-            Result<void> open_port();
+            void open_port();
 
             // === Low-level I/O operations (thread-safe) ===
 
@@ -119,9 +118,11 @@ namespace waveshare {
              *
              * @param data Pointer to data buffer
              * @param size Number of bytes to write
-             * @return Result<int> Number of bytes written on success, or error status
+             * @return int Number of bytes written
+             * @throws DeviceException if port not open or write fails
+             * @throws ProtocolException if size is invalid (0 or > MAX_BUFFER)
              */
-            Result<int> write_bytes(const std::uint8_t* data, std::size_t size);
+            int write_bytes(const std::uint8_t* data, std::size_t size);
 
             /**
              * @brief Read raw bytes from the serial port (thread-safe)
@@ -132,9 +133,11 @@ namespace waveshare {
              *
              * @param buffer Pointer to buffer to store read data
              * @param size Maximum number of bytes to read
-             * @return Result<int> Number of bytes actually read on success (may be 0 if no data available), or error status
+             * @return int Number of bytes actually read (may be 0 if no data available)
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if size is invalid (0 or > MAX_BUFFER)
              */
-            Result<int> read_bytes(std::uint8_t* buffer, std::size_t size);
+            int read_bytes(std::uint8_t* buffer, std::size_t size);
 
             /**
              * @brief Read exact number of bytes with timeout (thread-safe)
@@ -145,9 +148,11 @@ namespace waveshare {
              * @param buffer Destination buffer (must have capacity >= size)
              * @param size Exact number of bytes required
              * @param timeout_ms Total timeout in milliseconds
-             * @return Result<void> Success if all bytes read, Status::DTIMEOUT on timeout, or read error
+             * @throws TimeoutException if timeout expires before all bytes read
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if size is invalid
              */
-            Result<void> read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
+            void read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
 
 
         public:
@@ -161,16 +166,16 @@ namespace waveshare {
                 std::signal(SIGINT, sigint_handler);
 
                 // Open and configure the port
-                auto res = open_port();
-                if (res.fail()) {
-                    throw std::runtime_error("Failed to open port: " + res.describe());
+                open_port();
+                if (!is_open_) {
+                    throw std::runtime_error("Failed to open port");
                 }
 
-                res = configure_port();
-                if (res.fail()) {
+                configure_port();
+                if (!is_configured_) {
                     // Close the port on failure
                     close_port();
-                    throw std::runtime_error("Failed to configure port: " + res.describe());
+                    throw std::runtime_error("Failed to configure port");
                 }
             }
 
@@ -296,27 +301,24 @@ namespace waveshare {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              * @tparam Frame the frame object from which to serialize data
              * @param frame the frame object to send
-             * @return Result<void> success or error status
+             * @throws DeviceException if port not open or write fails
+             * @throws ProtocolException if partial write occurs
              */
             template<typename Frame>
-            Result<void> send_frame(const Frame& frame) {
+            int send_frame(const Frame& frame) {
                 // State-First: Generate protocol buffer from frame state
                 auto buffer = frame.serialize();
 
                 // Write all bytes atomically (thread-safe via write_mutex_)
-                auto res = write_bytes(buffer.data(), buffer.size());
-                if (res.fail()) {
-                    return Result<void>::error(res.error(), "send_frame");
-                }
+                int bytes_written = write_bytes(buffer.data(), buffer.size());
 
                 // Verify all bytes written
-                if (res.value() != static_cast<int>(buffer.size())) {
-                    return Result<void>::error(Status::DNOT_OPEN,
-                        "send_frame: Partial write " + std::to_string(res.value()) +
+                if (bytes_written != static_cast<int>(buffer.size())) {
+                    throw ProtocolException(Status::DNOT_OPEN,
+                        "send_frame: Partial write " + std::to_string(bytes_written) +
                         "/" + std::to_string(buffer.size()));
                 }
-
-                return Result<void>::success();
+                return bytes_written;
             }
 
             /**
@@ -325,9 +327,12 @@ namespace waveshare {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
-             * @return Result<FixedFrame> success or error status
+             * @return FixedFrame The received and parsed frame
+             * @throws TimeoutException if timeout expires before frame received
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if frame deserialization fails
              */
-            Result<FixedFrame> receive_fixed_frame(int timeout_ms = 1000);
+            FixedFrame receive_fixed_frame(int timeout_ms = 1000);
 
             /**
              * @brief Receive a variable-size data frame from the USB adapter
@@ -342,10 +347,13 @@ namespace waveshare {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
-             * @return Result<VariableFrame> success or error status
+             * @return VariableFrame The received and parsed frame
+             * @throws TimeoutException if timeout expires before frame received
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if frame deserialization fails
              */
 
-            Result<VariableFrame> receive_variable_frame(int timeout_ms = 1000);
+            VariableFrame receive_variable_frame(int timeout_ms = 1000);
     };
 
 }     // namespace USBCANBridge
