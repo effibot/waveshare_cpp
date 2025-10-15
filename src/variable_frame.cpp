@@ -11,7 +11,7 @@
 
 #include "../include/frame/variable_frame.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // === Serialization Implementation ===
 
@@ -52,25 +52,25 @@ namespace USBCANBridge {
         return buffer;
     }
 
-    Result<void> VariableFrame::impl_deserialize(span<const std::uint8_t> buffer) {
+    void VariableFrame::impl_deserialize(span<const std::uint8_t> buffer) {
         if (buffer.size() < 5) {
-            return Result<void>::error(Status::WBAD_LENGTH,
+            throw ProtocolException(Status::WBAD_LENGTH,
                 "VariableFrame requires at least 5 bytes");
         }
 
         if (buffer.size() > 15) {
-            return Result<void>::error(Status::WBAD_LENGTH,
+            throw ProtocolException(Status::WBAD_LENGTH,
                 "VariableFrame cannot exceed 15 bytes");
         }
 
         // Validate START and END bytes
         if (buffer[0] != to_byte(Constants::START_BYTE)) {
-            return Result<void>::error(Status::WBAD_FORMAT,
+            throw ProtocolException(Status::WBAD_FORMAT,
                 "Invalid START byte");
         }
 
         if (buffer[buffer.size() - 1] != to_byte(Constants::END_BYTE)) {
-            return Result<void>::error(Status::WBAD_FORMAT,
+            throw ProtocolException(Status::WBAD_FORMAT,
                 "Invalid END byte");
         }
 
@@ -86,7 +86,7 @@ namespace USBCANBridge {
 
         // Validate frame size
         if (buffer.size() != expected_size) {
-            return Result<void>::error(Status::WBAD_LENGTH,
+            throw ProtocolException(Status::WBAD_LENGTH,
                 "Buffer size doesn't match TYPE byte specification");
         }
 
@@ -112,8 +112,6 @@ namespace USBCANBridge {
         if (dlc > 0) {
             std::copy_n(buffer.begin() + data_offset, dlc, data_state_.data.begin());
         }
-
-        return Result<void>::success();
     }
 
     std::size_t VariableFrame::impl_serialized_size() const {

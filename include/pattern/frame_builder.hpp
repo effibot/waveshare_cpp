@@ -59,7 +59,7 @@
 #include "../enums/protocol.hpp"
 #include "../template/frame_traits.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
 /**
  * @brief Internal state holder for frame construction.
@@ -526,4 +526,4 @@ namespace USBCANBridge {
         return FrameBuilder<Frame>{};
     }
 
-} // namespace USBCANBridge
+} // namespace waveshare

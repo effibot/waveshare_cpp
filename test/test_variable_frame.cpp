@@ -32,7 +32,7 @@
 #include <array>
 #include <vector>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // ============================================================================
 // TEST FIXTURE - Minimal shared setup
@@ -435,9 +435,8 @@ TEST_CASE("VariableFrame - Serialize-deserialize round-trip preserves data",
     INFO("Serialized Frame: " << original.to_string());
     // Deserialize into new frame
     VariableFrame deserialized;
-    auto result = deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
-        serialized.size()));
-    REQUIRE(result.ok());
+    REQUIRE_NOTHROW(deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
+        serialized.size())));
     INFO("Deserialized Frame: " << deserialized.to_string());
     // Verify fields match
     REQUIRE(deserialized.get_can_id() == original.get_can_id());

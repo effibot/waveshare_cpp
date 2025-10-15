@@ -1,8 +1,8 @@
 /**
  * @file serialization_helpers.hpp
  * @brief Pure static helper classes for frame serialization
- * @version 3.0
- * @date 2025-10-09
+ * @version 4.0
+ * @date 2025-10-14
  *
  * State-First Architecture Helpers:
  * - ChecksumHelper: Compute and validate checksums on raw buffers
@@ -21,10 +21,11 @@
 #include <numeric>
 #include <boost/core/span.hpp>
 #include "../enums/protocol.hpp"
+#include "../exception/waveshare_exception.hpp"
 
 using namespace boost;
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Static helper for checksum computation and validation
@@ -99,6 +100,46 @@ namespace USBCANBridge {
                 std::uint8_t computed = compute(buffer, start, end);
 
                 return stored == computed;
+            }
+
+            /**
+             * @brief Validate checksum and throw on mismatch
+             *
+             * Computes checksum from [start, end) and compares it to the
+             * stored checksum at checksum_pos. Throws ProtocolException if invalid.
+             *
+             * @param buffer Buffer containing the frame
+             * @param checksum_pos Offset of the stored checksum byte
+             * @param start Start of checksum range (inclusive)
+             * @param end End of checksum range (exclusive)
+             * @param context Operation context for error message
+             * @throws ProtocolException if checksums don't match or position is invalid
+             *
+             * @example
+             * @code
+             * // For FixedFrame: validate and throw on error
+             * ChecksumHelper::validate_or_throw(buffer, 19, 2, 19, "FixedFrame::deserialize");
+             * @endcode
+             */
+            static void validate_or_throw(span<const std::uint8_t> buffer,
+                std::size_t checksum_pos,
+                std::size_t start,
+                std::size_t end,
+                const std::string& context) {
+                if (checksum_pos >= buffer.size()) {
+                    throw ProtocolException(Status::WBAD_CHECKSUM,
+                        context + ": Invalid checksum position");
+                }
+
+                std::uint8_t stored = buffer[checksum_pos];
+                std::uint8_t computed = compute(buffer, start, end);
+
+                if (stored != computed) {
+                    throw ProtocolException(Status::WBAD_CHECKSUM,
+                        context + ": Checksum mismatch (expected " +
+                        std::to_string(computed) + ", got " +
+                        std::to_string(stored) + ")");
+                }
             }
 
             /**
@@ -265,6 +306,35 @@ namespace USBCANBridge {
             static std::size_t get_dlc(std::uint8_t type_byte) {
                 return static_cast<std::size_t>(type_byte & 0x0F);
             }
+
+            /**
+             * @brief Validate DLC value and throw on error
+             *
+             * @param dlc The DLC to validate
+             * @param context Operation context for error message
+             * @throws ProtocolException if DLC > 8
+             */
+            static void validate_dlc(std::size_t dlc, const std::string& context) {
+                if (dlc > 8) {
+                    throw ProtocolException(Status::WBAD_DLC,
+                        context + ": Invalid DLC " + std::to_string(dlc) + " (must be 0-8)");
+                }
+            }
+
+            /**
+             * @brief Validate TYPE byte base value (should start with 0xC0)
+             *
+             * @param type_byte The TYPE byte to validate
+             * @param context Operation context for error message
+             * @throws ProtocolException if TYPE byte doesn't start with 0xC0
+             */
+            static void validate_type_base(std::uint8_t type_byte, const std::string& context) {
+                if ((type_byte & 0xC0) != 0xC0) {
+                    throw ProtocolException(Status::WBAD_TYPE,
+                        context + ": Invalid TYPE byte base (expected 0xC0, got 0x" +
+                        std::to_string(type_byte & 0xC0) + ")");
+                }
+            }
     };
 
-}  // namespace USBCANBridge
+}  // namespace waveshare

@@ -11,7 +11,7 @@
 
 #include "../include/frame/fixed_frame.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // === Serialization Implementation ===
 
@@ -46,19 +46,18 @@ namespace USBCANBridge {
         return buffer;
     }
 
-    Result<void> FixedFrame::impl_deserialize(span<const std::uint8_t> buffer) {
+    void FixedFrame::impl_deserialize(span<const std::uint8_t> buffer) {
         if (buffer.size() < 20) {
-            return Result<void>::error(Status::WBAD_LENGTH,
-                "FixedFrame requires exactly 20 bytes");
+            throw ProtocolException(Status::WBAD_LENGTH,
+                "FixedFrame::deserialize: requires exactly 20 bytes, got " +
+                std::to_string(buffer.size()));
         }
 
-        // Validate checksum
-        if (!ChecksumHelper::validate(buffer, Layout::CHECKSUM,
+        // Validate checksum (throws on failure)
+        ChecksumHelper::validate_or_throw(buffer, Layout::CHECKSUM,
             Layout::CHECKSUM_START,
-            Layout::CHECKSUM_END + 1)) {
-            return Result<void>::error(Status::WBAD_CHECKSUM,
-                "Checksum validation failed");
-        }
+            Layout::CHECKSUM_END + 1,
+            "FixedFrame::deserialize");
 
         // Extract state from buffer
         core_state_.can_version = from_byte<CANVersion>(buffer[Layout::CAN_VERS]);
@@ -75,8 +74,6 @@ namespace USBCANBridge {
         // Extract data
         data_state_.data.resize(8);
         std::copy_n(buffer.begin() + Layout::DATA, 8, data_state_.data.begin());
-
-        return Result<void>::success();
     }
 
     std::size_t FixedFrame::impl_serialized_size() const {

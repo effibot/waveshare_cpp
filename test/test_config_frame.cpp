@@ -17,7 +17,7 @@
 #include "../include/interface/serialization_helpers.hpp"
 #include <array>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // ============================================================================
 // TEST FIXTURE - Minimal shared setup
@@ -346,9 +346,8 @@ TEST_CASE("ConfigFrame - Serialize-deserialize round-trip preserves data",
 
     // Deserialize into new frame
     ConfigFrame deserialized;
-    auto result = deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
-        serialized.size()));
-    REQUIRE(result.ok());
+    REQUIRE_NOTHROW(deserialized.deserialize(span<const std::uint8_t>(serialized.data(),
+        serialized.size())));
 
     // Verify all fields match
     REQUIRE(deserialized.get_CAN_version() == original.get_CAN_version());

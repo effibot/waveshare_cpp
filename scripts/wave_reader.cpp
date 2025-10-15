@@ -10,54 +10,45 @@
  */
 #include "script_utils.hpp"
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 int main(int argc, char* argv[]) {
-    // Parse command-line arguments
-    auto config_result = parse_arguments(argc, argv, true);
-    if (config_result.fail()) {
-        return 1;
-    }
-    ScriptConfig config = config_result.value();
+    try {
+        // Parse command-line arguments
+        ScriptConfig config = parse_arguments(argc, argv, true);
 
-    // Initialize and configure adapter
-    auto adapter_result = initialize_adapter(config);
-    if (adapter_result.fail()) {
-        return 1;
-    }
-    USBAdapter* adapter = adapter_result.value();
+        // Initialize and configure adapter
+        auto adapter = initialize_adapter(config);
 
-    // Read frames in a loop
-    while (!USBAdapter::should_stop()) {
-        std::string frame_string;
+        // Read frames in a loop
+        while (!USBAdapter::should_stop()) {
+            try {
+                std::string frame_string;
 
-        if (config.use_fixed_frames) {
-            auto frame_res = adapter->receive_fixed_frame(1000); // 1 second timeout
-            if (frame_res.fail()) {
-                if (frame_res.error() == Status::WTIMEOUT) {
-                    continue; // Timeout, no frame received
+                if (config.use_fixed_frames) {
+                    auto frame = adapter->receive_fixed_frame(1000); // 1 second timeout
+                    frame_string = frame.to_string();
+                } else {
+                    auto frame = adapter->receive_variable_frame(1000); // 1 second timeout
+                    frame_string = frame.to_string();
                 }
-                std::cerr << "Failed to receive frame: " << frame_res.describe() << "\n";
+
+                // Process the received frame
+                std::cout << "Received <<\t" << frame_string << "\n";
+            } catch (const TimeoutException&) {
+                // Timeout, no frame received - this is expected, just continue
+                continue;
+            }
+            catch (const WaveshareException& e) {
+                std::cerr << "Failed to receive frame: " << e.what() << "\n";
                 break;
             }
-            frame_string = frame_res.value().to_string();
-        } else {
-            auto frame_res = adapter->receive_variable_frame(1000); // 1 second timeout
-            if (frame_res.fail()) {
-                if (frame_res.error() == Status::WTIMEOUT) {
-                    continue; // Timeout, no frame received
-                }
-                std::cerr << "Failed to receive frame: " << frame_res.describe() << "\n";
-                break;
-            }
-            frame_string = frame_res.value().to_string();
         }
 
-        // Process the received frame
-        std::cout << "Received <<\t" << frame_string << "\n";
+        // Cleanup (automatic with unique_ptr)
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
     }
-
-    // Cleanup
-    delete adapter;
-    return 0;
 }

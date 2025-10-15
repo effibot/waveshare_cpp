@@ -18,7 +18,7 @@
 #include "../interface/config.hpp"
 #include "../interface/serialization_helpers.hpp"
 
-namespace USBCANBridge {
+namespace waveshare {
     /**
      * @brief Configuration frame for the USB-CAN Bridge (20 bytes)
      *
@@ -105,9 +105,9 @@ namespace USBCANBridge {
             /**
              * @brief Deserialize byte buffer into frame state
              * @param buffer Input buffer to parse (must be 20 bytes)
-             * @return Result<void> Success or error status
+             * @throws ProtocolException if buffer is invalid (bad length, format, or checksum)
              */
-            Result<void> impl_deserialize(span<const std::uint8_t> buffer);
+            void impl_deserialize(span<const std::uint8_t> buffer);
 
             /**
              * @brief Get serialized size (always 20 bytes)

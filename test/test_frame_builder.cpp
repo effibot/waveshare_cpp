@@ -20,7 +20,7 @@
 #include "../include/frame/config_frame.hpp"
 #include <vector>
 
-using namespace USBCANBridge;
+using namespace waveshare;
 
 // ============================================================================
 // HELPER FUNCTIONS

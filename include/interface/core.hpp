@@ -2,8 +2,8 @@
  * @file core.hpp
  * @author Andrea Efficace (andrea.efficace@)
  * @brief Core interface for state-first frame architecture
- * @version 3.0
- * @date 2025-10-09
+ * @version 4.0
+ * @date 2025-10-14
  *
  * State-First Architecture:
  * - CoreState holds runtime frame state (can_version, type)
@@ -26,13 +26,13 @@
 #include <iomanip>
 
 #include "../enums/protocol.hpp"
-#include "../template/result.hpp"
+#include "../exception/waveshare_exception.hpp"
 #include "../template/frame_traits.hpp"
 
 using namespace boost;
 
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief Core state for all frame types
@@ -98,13 +98,15 @@ namespace USBCANBridge {
              * @brief Deserialize a byte buffer into frame state
              *
              * Populates state from a wire-format buffer.
+             * Throws exception on validation errors.
              *
              * @param buffer Byte buffer to deserialize
-             * @return Result<void> Success or error status
+             * @throws ProtocolException on validation errors
+             * @throws DeviceException on I/O errors
              * @note Calls derived().impl_deserialize() for frame-specific logic
              */
-            Result<void> deserialize(span<const std::uint8_t> buffer) {
-                return derived().impl_deserialize(buffer);
+            void deserialize(span<const std::uint8_t> buffer) {
+                derived().impl_deserialize(buffer);
             }
 
             /**

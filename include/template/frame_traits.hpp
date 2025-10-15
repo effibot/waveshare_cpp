@@ -54,7 +54,7 @@
 #include <cstddef>
 #include <type_traits>
 
-namespace USBCANBridge {
+namespace waveshare {
 
     // Forward declarations
     class FixedFrame;

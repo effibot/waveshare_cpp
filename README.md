@@ -5,10 +5,216 @@ This is a C++ library for interfacing with the Waveshare USB-CAN-A device. The l
 - Send and receive CAN messages with both fixed and variable length frames
 - Support for both standard (11-bit - CAN 2.0A) and extended (29-bit - CAN 2.0B) CAN IDs
 - Error handling and status reporting
-## Requirements
-- C++17 or later
-- libusb-1.0
 
+## Quick Start / Usage Example
+
+For a quick start guide, see the `scripts` directory. Here, you can find simple programs demonstrating how to use the library to send and receive CAN messages.
+
+- `wave_reader.cpp`: A simple program that reads messages that arrive on the USB adapter and prints them to the console.
+- `wave_writer.cpp`: A simple program that sends a predefined CAN message every second. You can modify the message ID and data in the source code.
+- `wave_bridge.cpp`: A program that bridges messages between a SocketCAN interface and the Waveshare USB-CAN-A device.
+
+The steps to run the examples are:
+1. Connect the Waveshare USB-CAN-A device to your computer.
+2. Create a virtual CAN interface (e.g., `vcan0`):
+    ```bash
+    sudo modprobe vcan
+    sudo ip link add dev vcan0 type vcan
+    sudo ip link set up vcan0
+    ```
+3. Build the project using CMake:
+    ```bash
+    mkdir build
+    cmake --build ./build --config Debug --target clean
+    cmake --build ./build --config Debug --target all
+    ```
+4. Run the example programs, in three different terminals:
+    ```bash
+    ./build/scripts/wave_bridge
+    ./build/scripts/wave_reader
+    ./build/scripts/wave_writer
+    ```
+5. (optional) If you have `can-utils` installed, you can also monitor the virtual CAN interface:
+    ```bash
+    candump vcan0
+    ```
+    And send messages to it:
+    ```bash
+    cansend vcan0 123#AABBCCDD
+    ```
+
+> You should see the messages sent by `wave_writer` being received by `wave_reader` through the `wave_bridge`, which forwards messages between the virtual CAN interface and the USB-CAN-A device. The output from the bridge, will show how many messages were forwarded in each direction and what is the content of the messages.
+
+### Basic SocketCAN Bridge Setup
+
+The library provides a high-level SocketCAN bridge that connects Waveshare USB-CAN adapter to Linux SocketCAN interface:
+
+```cpp
+#include "waveshare.hpp"
+using namespace waveshare;
+
+// 1. Create configuration (from .env file, environment variables, or defaults)
+auto config = BridgeConfig::load(".env");  // Loads with priority: env vars > .env > defaults
+config.validate();  // Validate before use
+
+// 2. Create bridge (automatically opens socket and USB adapter)
+SocketCANBridge bridge(config);
+
+// 3. Bridge is ready - socket is open and configured
+if (bridge.is_socketcan_open()) {
+    std::cout << "SocketCAN connected on " << config.socketcan_interface << std::endl;
+}
+```
+
+### Configuration Methods
+
+```cpp
+// Method 1: Use defaults (vcan0, /dev/ttyUSB0, 2Mbps serial, 1Mbps CAN)
+auto config = BridgeConfig::create_default();
+
+// Method 2: Load from environment variables
+export WAVESHARE_SOCKETCAN_INTERFACE=can0
+export WAVESHARE_CAN_BAUD=500000
+auto config = BridgeConfig::from_env();
+
+// Method 3: Load from .env file
+// File: .env
+// WAVESHARE_SOCKETCAN_INTERFACE=can0
+// WAVESHARE_USB_DEVICE=/dev/ttyUSB0
+// WAVESHARE_SERIAL_BAUD=2000000
+// WAVESHARE_CAN_BAUD=1000000
+auto config = BridgeConfig::from_file(".env");
+
+// Method 4: Smart load with priority (env vars override .env)
+auto config = BridgeConfig::load(".env");
+
+// Programmatic configuration
+config.socketcan_interface = "can0";
+config.can_baud_rate = CANBaud::BAUD_500K;
+config.can_mode = CANMode::NORMAL;
+config.auto_retransmit = true;
+```
+
+### Frame Conversion (SocketCAN ↔ Waveshare)
+
+```cpp
+#include "interface/socketcan_helpers.hpp"
+
+// Convert Waveshare VariableFrame to SocketCAN can_frame
+VariableFrame waveshare_frame(
+    Format::DATA_VARIABLE,
+    CANVersion::STD_VARIABLE,
+    0x123,  // CAN ID
+    span<const std::uint8_t>({0x11, 0x22, 0x33})
+);
+struct can_frame socketcan_frame = SocketCANHelper::to_socketcan(waveshare_frame);
+
+// Convert SocketCAN can_frame to Waveshare VariableFrame
+struct can_frame cf;
+cf.can_id = 0x456;
+cf.can_dlc = 4;
+cf.data[0] = 0xAA; cf.data[1] = 0xBB; cf.data[2] = 0xCC; cf.data[3] = 0xDD;
+VariableFrame frame = SocketCANHelper::from_socketcan(cf);
+```
+
+### Low-Level USB Adapter Usage
+
+For direct USB adapter access without SocketCAN:
+
+```cpp
+#include "pattern/usb_adapter.hpp"
+
+// Open and configure USB adapter
+USBAdapter adapter("/dev/ttyUSB0", SerialBaud::BAUD_2M);
+
+// Send variable frame
+VariableFrame tx_frame(
+    Format::DATA_VARIABLE,
+    CANVersion::STD_VARIABLE,
+    0x123,
+    span<const std::uint8_t>({0x11, 0x22})
+);
+adapter.send_frame(tx_frame);
+
+// Receive variable frame with timeout
+try {
+    auto rx_frame = adapter.receive_variable_frame(1000);  // 1 second timeout
+    std::cout << "Received: " << rx_frame.to_string() << std::endl;
+} catch (const TimeoutException& e) {
+    std::cout << "No frame received" << std::endl;
+}
+```
+
+### Frame Building
+
+```cpp
+#include "pattern/frame_builder.hpp"
+
+// Build FixedFrame
+auto fixed = FrameBuilder<FixedFrame>()
+    .with_can_version(CANVersion::STD_FIXED)
+    .with_format(Format::DATA_FIXED)
+    .with_id(0x123)
+    .with_data({0x11, 0x22, 0x33, 0x44})
+    .build();
+
+// Build VariableFrame
+auto variable = FrameBuilder<VariableFrame>()
+    .with_type(CANVersion::EXT_VARIABLE, Format::DATA_VARIABLE)
+    .with_id(0x12345678)
+    .with_data({0xAA, 0xBB})
+    .build();
+
+// Build ConfigFrame
+auto config_frame = FrameBuilder<ConfigFrame>()
+    .with_can_version(CANVersion::STD_FIXED)
+    .with_baud_rate(CANBaud::BAUD_500K)
+    .with_mode(CANMode::NORMAL)
+    .with_auto_rtx(RTX::AUTO)
+    .build();
+```
+
+### Error Handling
+
+The library uses exceptions for error handling and custom ones are listed in `include/exceptions.hpp`. The main exception types are:
+- `ProtocolException`: For frame validation and protocol errors (e.g., invalid checksum)
+- `DeviceException`: For I/O errors and device issues (e.g., cannot open device)
+- `TimeoutException`: For read/write timeouts
+- `CANException`: For CAN bus protocol errors (e.g., filter issues)
+
+### Virtual CAN Setup (for testing)
+
+```bash
+# Create virtual CAN interface
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+
+# Verify
+ip link show vcan0
+```
+
+### Running Tests
+
+The library includes comprehensive test coverage using Catch2:
+
+```bash
+# Run all tests
+cd build && ctest --output-on-failure
+
+# Run specific test suite
+./build/test/test_fixed_frame
+./build/test/test_socketcan_bridge
+```
+
+**Test Suite**: The library includes a lot of unit tests covering:
+- Frame serialization/deserialization (FixedFrame, VariableFrame, ConfigFrame)
+- SocketCAN bridge functionality (with mock I/O for hardware independence)
+- Configuration loading and validation
+- USB adapter API
+- Exception handling
+
+All tests use dependency injection with mocks, requiring **no hardware** to run.
 
 ## Implementation Details
 
@@ -101,3 +307,16 @@ When configuring the acceptance filter and mask, it's important to understand ho
 - [Waveshare USB-CAN-A Secondary Development](https://www.waveshare.com/wiki/Secondary_Development_Serial_Conversion_Definition_of_CAN_Protocol)
 - [Waveshare USB-CAN-A Driver for Linux](https://files.waveshare.com/wiki/USB-CAN-A/Demo/USB-CAN-A.zip)
 - [CAN Specification 2.0](https://www.can-cia.org/can-knowledge/can-cc)
+
+---
+
+### Future Enhancements
+
+Potential optimizations and features for future consideration:
+1. **Zero-copy I/O**: Use `recvmsg()` with `MSG_PEEK` for socket reads
+2. **Batched Operations**: Accumulate multiple frames before socket writes
+3. **Lock-free Queues**: Replace threads with SPSC ring buffers for lower latency
+4. **Hardware Timestamping**: Use `SO_TIMESTAMP` socket option for precise timing
+5. **Memory Pooling**: Pre-allocate VariableFrame objects to reduce allocations
+
+---

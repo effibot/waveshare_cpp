@@ -1,5 +1,15 @@
 include(CTest)
 
+# Copy .env file to build root directory for tests (CTest runs from there)
+if(EXISTS "${PROJECT_SOURCE_DIR}/.env")
+    configure_file(
+        "${PROJECT_SOURCE_DIR}/.env"
+        "${PROJECT_BINARY_DIR}/.env"
+        COPYONLY
+    )
+    message(STATUS "Copied .env file to build directory for tests")
+endif()
+
 # Find or fetch Catch2
 find_package(Catch2 3 QUIET)
 

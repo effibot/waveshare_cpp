@@ -13,7 +13,6 @@
 #pragma once
 
 #include "../enums/protocol.hpp"
-#include "../template/result.hpp"
 #include "../template/frame_traits.hpp"
 #include "../frame/config_frame.hpp"
 #include "../frame/fixed_frame.hpp"
@@ -30,8 +29,10 @@
 #include <mutex>
 #include <shared_mutex>
 #include <chrono>
+#include "../io/serial_port.hpp"
+#include <memory>
 
-namespace USBCANBridge {
+namespace waveshare {
 
     /**
      * @brief USB-CAN Adapter interface
@@ -40,26 +41,24 @@ namespace USBCANBridge {
      * It abstracts low-level USB communication and provides high-level methods
      * for sending and receiving CAN frames.
      *
-     * @note This implementation relies on the fact that the Linux kernel exposes those adapter
-     * under /dev/ttyUSBx as a serial device, loading the `ch341-uart` driver.
-     * Under Windows, the driver is provided in the official Waveshare website.
-     * See the project README for details.
+     * @note This implementation uses dependency injection for serial I/O to enable
+     * testing with mocks. Production code uses RealSerialPort for hardware communication.
      */
     class USBAdapter {
 
         private:
+            // # I/O abstraction
+            std::unique_ptr<ISerialPort> serial_port_;  // Injected serial port (real or mock)
+
             // # Internal State
             std::string usb_device_;    // e.g., "/dev/ttyUSB0"
             SerialBaud baudrate_;   // e.g., SerialBaud::BAUD_2M
-            int fd_ = -1;  // File descriptor for the serial port
-            struct termios2 tty_ {}; // Terminal control structure
-            bool is_open_ = false;  // Flag to indicate if the port is open
             bool is_configured_ = false; // Flag to indicate if the port is configured
             bool is_monitoring_ = false;  // Flag to indicate if monitoring is active
             static inline volatile std::sig_atomic_t stop_flag = false; // Flag to indicate if a stop signal was received
 
             // # Thread-safety primitives
-            mutable std::shared_mutex state_mutex_;  // Protects is_open_, is_configured_, fd_
+            mutable std::shared_mutex state_mutex_;  // Protects is_configured_
             std::mutex write_mutex_;                 // Exclusive write lock
             std::mutex read_mutex_;                  // Exclusive read lock
 
@@ -76,38 +75,7 @@ namespace USBCANBridge {
              */
             static void sigint_handler(int signum);
 
-            /**
-             * @brief Configure the serial port settings
-             *
-             * This function configures the serial port settings such as baud rate,
-             * character size, and parity. It uses the termios structure to set
-             * the desired parameters.
-             * Those parameters are set according to the adapter C example code.
-             * @throws std::runtime_error if the configuration fails
-             * @note This function should be called after opening the port.
-             */
-            Result<void> configure_port();
-
-            /**
-             * @brief Close the serial port
-             *
-             * This function closes the serial port if it is open. It also resets
-             * the is_open_ flag to false.
-             * @throws std::runtime_error if closing the port fails
-             * @note This function should be called in the destructor to ensure
-             * proper resource cleanup.
-             */
-            Result<void> close_port();
-
-            /**
-             * @brief Open the serial port
-             *
-             * This function opens the serial port specified by usb_device_.
-             * It sets the file descriptor and configures the port settings.
-             * @throws std::runtime_error if opening or configuring the port fails
-             * @note This function should be called before any read/write operations.
-             */
-            Result<void> open_port();
+            // # Internal utility methods (removed old port management - now in RealSerialPort)
 
             // === Low-level I/O operations (thread-safe) ===
 
@@ -119,9 +87,11 @@ namespace USBCANBridge {
              *
              * @param data Pointer to data buffer
              * @param size Number of bytes to write
-             * @return Result<int> Number of bytes written on success, or error status
+             * @return int Number of bytes written
+             * @throws DeviceException if port not open or write fails
+             * @throws ProtocolException if size is invalid (0 or > MAX_BUFFER)
              */
-            Result<int> write_bytes(const std::uint8_t* data, std::size_t size);
+            int write_bytes(const std::uint8_t* data, std::size_t size);
 
             /**
              * @brief Read raw bytes from the serial port (thread-safe)
@@ -132,9 +102,11 @@ namespace USBCANBridge {
              *
              * @param buffer Pointer to buffer to store read data
              * @param size Maximum number of bytes to read
-             * @return Result<int> Number of bytes actually read on success (may be 0 if no data available), or error status
+             * @return int Number of bytes actually read (may be 0 if no data available)
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if size is invalid (0 or > MAX_BUFFER)
              */
-            Result<int> read_bytes(std::uint8_t* buffer, std::size_t size);
+            int read_bytes(std::uint8_t* buffer, std::size_t size);
 
             /**
              * @brief Read exact number of bytes with timeout (thread-safe)
@@ -145,76 +117,54 @@ namespace USBCANBridge {
              * @param buffer Destination buffer (must have capacity >= size)
              * @param size Exact number of bytes required
              * @param timeout_ms Total timeout in milliseconds
-             * @return Result<void> Success if all bytes read, Status::DTIMEOUT on timeout, or read error
+             * @throws TimeoutException if timeout expires before all bytes read
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if size is invalid
              */
-            Result<void> read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
+            void read_exact(std::uint8_t* buffer, std::size_t size, int timeout_ms);
 
 
         public:
             /**
-             * @brief Constructor for USBAdapter
+             * @brief Constructor for USBAdapter with dependency injection
+             * @param serial_port Injected serial port (real or mock)
+             * @param usb_dev Device path for identification
+             * @param baudrate Serial baud rate (for logging/reference)
              */
-            USBAdapter(std::string usb_dev, SerialBaud baudrate = DEFAULT_SERIAL_BAUD) :
-                usb_device_(std::move(usb_dev)), baudrate_(baudrate) {
+            USBAdapter(std::unique_ptr<ISerialPort> serial_port, std::string usb_dev,
+                SerialBaud baudrate = DEFAULT_SERIAL_BAUD);
 
-                // Register the SIGINT handler
-                std::signal(SIGINT, sigint_handler);
-
-                // Open and configure the port
-                auto res = open_port();
-                if (res.fail()) {
-                    throw std::runtime_error("Failed to open port: " + res.describe());
-                }
-
-                res = configure_port();
-                if (res.fail()) {
-                    // Close the port on failure
-                    close_port();
-                    throw std::runtime_error("Failed to configure port: " + res.describe());
-                }
-            }
+            /**
+             * @brief Factory method to create USBAdapter with real hardware
+             * @param usb_dev Device path (e.g., "/dev/ttyUSB0")
+             * @param baudrate Serial baud rate
+             * @return std::unique_ptr<USBAdapter> Configured adapter ready to use
+             */
+            static std::unique_ptr<USBAdapter> create(const std::string& usb_dev,
+                SerialBaud baudrate = DEFAULT_SERIAL_BAUD);
 
             // USBAdapter instance
 
 
 
             /**
-             * @brief Destructor for USBAdapter
+             * @brief Destructor
              *
-             * This destructor ensures that the serial port is closed properly
-             * when the USBAdapter object goes out of scope.
+             * Serial port is automatically closed by ISerialPort destructor
              */
-            ~USBAdapter() {
-                if (is_open_) {
-                    close_port();
-                }
-            }
+            ~USBAdapter() = default;
 
             // # Set/Get methods
 
             /**
-             * @brief Check if the used baudrate is the same used in the termios struct and return it
+             * @brief Get the configured baud rate
              *
-             * @return SerialBaud
+             * @return SerialBaud The baud rate set during construction
              */
             SerialBaud get_baudrate() const {
-                if (!is_open_ || fd_ == -1) {
-                    throw std::runtime_error("Port not open");
-                }
-                speed_t actual_speed;
-                if (is_configured()) {
-                    speed_t ospeed = tty_.c_ospeed;
-                    speed_t ispeed = tty_.c_ispeed;
-                    if (ospeed != ispeed) {
-                        throw std::runtime_error("Output and Input speeds do not match");
-                    }
-                    actual_speed = ospeed;
-                } else {
-                    // If not configured, return the set baudrate
-                    return baudrate_;
-                }
-                return from_speed_t(actual_speed);
+                return baudrate_;
             }
+
             /**
              * @brief Set the baudrate object
              *
@@ -231,11 +181,13 @@ namespace USBCANBridge {
             /**
              * @brief Set the name of USB device object
              * @param usb_device
+             * @note This will close the current port if open. Call create() to reopen with new device.
              */
             void set_usb_device(const std::string& usb_device) {
-                // If the port is open, close it first
-                if (is_open_) {
-                    close_port();
+                // Close current port
+                if (serial_port_) {
+                    serial_port_->close();
+                    serial_port_.reset();
                 }
                 // Set the port as not configured
                 is_configured_ = false;
@@ -248,14 +200,18 @@ namespace USBCANBridge {
              *
              * @return true if the device is open, false otherwise
              */
-            bool is_open() const { return is_open_; }
+            bool is_open() const {
+                return serial_port_ && serial_port_->is_open();
+            }
 
             /**
              * @brief Get the file descriptor of the serial port
              *
              * @return int The file descriptor, or -1 if not open
              */
-            int get_fd() const { return fd_; }
+            int get_fd() const {
+                return serial_port_ ? serial_port_->get_fd() : -1;
+            }
 
             /**
              * @brief Check if the port is configured
@@ -279,9 +235,9 @@ namespace USBCANBridge {
                 std::ostringstream oss;
                 oss << "USBAdapter(";
                 oss << "Device: " << usb_device_ << ", ";
-                oss << "Baudrate: " << static_cast<int>(get_baudrate()) << ", ";
-                oss << "FD: " << fd_ << ", ";
-                oss << "Open: " << (is_open_ ? "Yes" : "No") << ", ";
+                oss << "Baudrate: " << static_cast<int>(baudrate_) << ", ";
+                oss << "FD: " << (serial_port_ ? serial_port_->get_fd() : -1) << ", ";
+                oss << "Open: " << (serial_port_ && serial_port_->is_open() ? "Yes" : "No") << ", ";
                 oss << "Configured: " << (is_configured_ ? "Yes" : "No");
                 oss << ")";
                 return oss.str();
@@ -296,27 +252,24 @@ namespace USBCANBridge {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              * @tparam Frame the frame object from which to serialize data
              * @param frame the frame object to send
-             * @return Result<void> success or error status
+             * @throws DeviceException if port not open or write fails
+             * @throws ProtocolException if partial write occurs
              */
             template<typename Frame>
-            Result<void> send_frame(const Frame& frame) {
+            int send_frame(const Frame& frame) {
                 // State-First: Generate protocol buffer from frame state
                 auto buffer = frame.serialize();
 
                 // Write all bytes atomically (thread-safe via write_mutex_)
-                auto res = write_bytes(buffer.data(), buffer.size());
-                if (res.fail()) {
-                    return Result<void>::error(res.error(), "send_frame");
-                }
+                int bytes_written = write_bytes(buffer.data(), buffer.size());
 
                 // Verify all bytes written
-                if (res.value() != static_cast<int>(buffer.size())) {
-                    return Result<void>::error(Status::DNOT_OPEN,
-                        "send_frame: Partial write " + std::to_string(res.value()) +
+                if (bytes_written != static_cast<int>(buffer.size())) {
+                    throw ProtocolException(Status::DNOT_OPEN,
+                        "send_frame: Partial write " + std::to_string(bytes_written) +
                         "/" + std::to_string(buffer.size()));
                 }
-
-                return Result<void>::success();
+                return bytes_written;
             }
 
             /**
@@ -325,9 +278,12 @@ namespace USBCANBridge {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
-             * @return Result<FixedFrame> success or error status
+             * @return FixedFrame The received and parsed frame
+             * @throws TimeoutException if timeout expires before frame received
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if frame deserialization fails
              */
-            Result<FixedFrame> receive_fixed_frame(int timeout_ms = 1000);
+            FixedFrame receive_fixed_frame(int timeout_ms = 1000);
 
             /**
              * @brief Receive a variable-size data frame from the USB adapter
@@ -342,10 +298,13 @@ namespace USBCANBridge {
              * @note This method is thread-safe and multiple threads can call it concurrently.
              *
              * @param timeout_ms maximum time to wait for the full frame (in milliseconds). Defaults to 1000ms.
-             * @return Result<VariableFrame> success or error status
+             * @return VariableFrame The received and parsed frame
+             * @throws TimeoutException if timeout expires before frame received
+             * @throws DeviceException if port not open or read fails
+             * @throws ProtocolException if frame deserialization fails
              */
 
-            Result<VariableFrame> receive_variable_frame(int timeout_ms = 1000);
+            VariableFrame receive_variable_frame(int timeout_ms = 1000);
     };
 
 }     // namespace USBCANBridge

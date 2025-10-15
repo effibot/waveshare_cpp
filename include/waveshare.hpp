@@ -13,8 +13,8 @@
 
 // Include the protocol enums
 #include "enums/protocol.hpp"
-// Include the result template
-#include "template/result.hpp"
+// Include exception hierarchy
+#include "exception/waveshare_exception.hpp"
 // Include the frame traits
 #include "template/frame_traits.hpp"
 // Include the frame interfaces
@@ -30,4 +30,8 @@
 #include "pattern/frame_builder.hpp"
 // Include the USB adapter interface
 #include "pattern/usb_adapter.hpp"
+// Include the bridge configuration
+#include "pattern/bridge_config.hpp"
+// Include the SocketCAN bridge
+#include "pattern/socketcan_bridge.hpp"
 
