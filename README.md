@@ -5,11 +5,45 @@ This is a C++ library for interfacing with the Waveshare USB-CAN-A device. The l
 - Send and receive CAN messages with both fixed and variable length frames
 - Support for both standard (11-bit - CAN 2.0A) and extended (29-bit - CAN 2.0B) CAN IDs
 - Error handling and status reporting
-## Requirements
-- C++17 or later
-- libusb-1.0
 
 ## Quick Start / Usage Example
+
+For a quick start guide, see the `scripts` directory. Here, you can find simple programs demonstrating how to use the library to send and receive CAN messages.
+
+- `wave_reader.cpp`: A simple program that reads messages that arrive on the USB adapter and prints them to the console.
+- `wave_writer.cpp`: A simple program that sends a predefined CAN message every second. You can modify the message ID and data in the source code.
+- `wave_bridge.cpp`: A program that bridges messages between a SocketCAN interface and the Waveshare USB-CAN-A device.
+
+The steps to run the examples are:
+1. Connect the Waveshare USB-CAN-A device to your computer.
+2. Create a virtual CAN interface (e.g., `vcan0`):
+    ```bash
+    sudo modprobe vcan
+    sudo ip link add dev vcan0 type vcan
+    sudo ip link set up vcan0
+    ```
+3. Build the project using CMake:
+    ```bash
+    mkdir build
+    cmake --build ./build --config Debug --target clean
+    cmake --build ./build --config Debug --target all
+    ```
+4. Run the example programs, in three different terminals:
+    ```bash
+    ./build/scripts/wave_bridge
+    ./build/scripts/wave_reader
+    ./build/scripts/wave_writer
+    ```
+5. (optional) If you have `can-utils` installed, you can also monitor the virtual CAN interface:
+    ```bash
+    candump vcan0
+    ```
+    And send messages to it:
+    ```bash
+    cansend vcan0 123#AABBCCDD
+    ```
+
+> You should see the messages sent by `wave_writer` being received by `wave_reader` through the `wave_bridge`, which forwards messages between the virtual CAN interface and the USB-CAN-A device. The output from the bridge, will show how many messages were forwarded in each direction and what is the content of the messages.
 
 ### Basic SocketCAN Bridge Setup
 
@@ -142,27 +176,11 @@ auto config_frame = FrameBuilder<ConfigFrame>()
 
 ### Error Handling
 
-The library uses exceptions for error handling:
-
-```cpp
-try {
-    auto config = BridgeConfig::load(".env");
-    config.validate();  // Throws on invalid config
-    
-    SocketCANBridge bridge(config);  // Throws on device errors
-    
-    // ... use bridge
-    
-} catch (const ProtocolException& e) {
-    std::cerr << "Protocol error: " << e.what() << std::endl;
-} catch (const DeviceException& e) {
-    std::cerr << "Device error: " << e.what() << std::endl;
-} catch (const TimeoutException& e) {
-    std::cerr << "Timeout: " << e.what() << std::endl;
-} catch (const std::exception& e) {
-    std::cerr << "Error: " << e.what() << std::endl;
-}
-```
+The library uses exceptions for error handling and custom ones are listed in `include/exceptions.hpp`. The main exception types are:
+- `ProtocolException`: For frame validation and protocol errors (e.g., invalid checksum)
+- `DeviceException`: For I/O errors and device issues (e.g., cannot open device)
+- `TimeoutException`: For read/write timeouts
+- `CANException`: For CAN bus protocol errors (e.g., filter issues)
 
 ### Virtual CAN Setup (for testing)
 
@@ -189,14 +207,14 @@ cd build && ctest --output-on-failure
 ./build/test/test_socketcan_bridge
 ```
 
-**Test Suite**: The library includes comprehensive test coverage with **132 tests** (100% passing, 0.19s runtime):
+**Test Suite**: The library includes a lot of unit tests covering:
 - Frame serialization/deserialization (FixedFrame, VariableFrame, ConfigFrame)
 - SocketCAN bridge functionality (with mock I/O for hardware independence)
 - Configuration loading and validation
 - USB adapter API
 - Exception handling
 
-All tests use dependency injection with mocks, requiring **no hardware** to run. See `doc/TEST_SUITE_QUICK_REFERENCE.md` for details.
+All tests use dependency injection with mocks, requiring **no hardware** to run.
 
 ## Implementation Details
 
@@ -291,79 +309,6 @@ When configuring the acceptance filter and mask, it's important to understand ho
 - [CAN Specification 2.0](https://www.can-cia.org/can-knowledge/can-cc)
 
 ---
-
-## Migration to Exception-Based Error Handling ✅ COMPLETED
-
-The library uses standard C++ exception-based error handling with a typed hierarchy:
-
-### Exception Types
-
-| Exception Type | Used For | Example |
-|---------------|----------|---------|
-| `ProtocolException` | Frame validation, protocol errors | Invalid checksum, bad frame length |
-| `DeviceException` | I/O errors, device issues | Cannot open device, write failure |
-| `TimeoutException` | Read/write timeouts | No data received within timeout |
-| `CANException` | CAN bus protocol errors | CAN bus errors, filter issues |
-
-### Exception Hierarchy
-
-```cpp
-namespace waveshare {
-    class WaveshareException : public std::runtime_error {
-        Status status_;  // Original error code
-    };
-    
-    class ProtocolException : public WaveshareException { };
-    class DeviceException : public WaveshareException { };
-    class TimeoutException : public WaveshareException { };
-    class CANException : public WaveshareException { };
-}
-```
-
-**Benefits**:
-- Simpler API - no need to check return values
-- Standard C++ idioms
-- Better stack traces with native exception unwinding
-- Zero-cost in happy path
-
-See error handling examples in the Quick Start section above.
-
-
-
-## SocketCAN Bridge Implementation ✅ COMPLETED
-
-The library provides a complete SocketCAN bridge implementation that connects Waveshare USB-CAN adapters to Linux SocketCAN interfaces.
-
-### Features Implemented
-
-**Core Components**:
-- ✅ Bidirectional frame conversion (Waveshare ↔ SocketCAN)
-- ✅ Configuration management (environment variables, .env files)
-- ✅ Socket lifecycle management  
-- ✅ USB adapter integration
-- ✅ Performance statistics tracking
-- ✅ Dual-threaded forwarding (USB→CAN and CAN→USB)
-- ✅ Lifecycle management (start/stop/destructor)
-- ✅ Comprehensive unit and integration tests
-
-**Thread Architecture**:
-- Independent forwarding threads with no shared mutable state
-- Thread-safe atomic statistics
-- Graceful shutdown with proper thread joining
-- Exception handling in each thread
-
-**Testing**:
-- Unit tests with dependency injection and mocks (no hardware required)
-- Integration tests available for vcan0 testing
-- 132 tests total, 100% passing, 0.19s runtime
-
-### Implementation Details
-
-For architecture details, threading model, and design decisions, see:
-- `doc/REFACTORING_COMPLETE.md` - Complete implementation journey
-- `include/pattern/socketcan_bridge.hpp` - Bridge class API
-- `include/io/` - I/O abstraction interfaces (ISerialPort, ICANSocket)
-- `test/test_socketcan_bridge*.cpp` - Test examples
 
 ### Future Enhancements
 

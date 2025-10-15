@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter -Wno-unused-variable -O2)
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wno-unused-parameter -Wno-unused-variable -O2 -g)
 endif()
 
 # Include directories
@@ -25,12 +25,6 @@ add_subdirectory(src)
 
 # Add scripts subdirectory
 add_subdirectory(scripts)
-
-# Build main executable
-add_executable(main main.cpp)
-#add_executable(wave_reader scripts/wave_reader.cpp)
-target_link_libraries(main PRIVATE waveshare_cpp)
-#target_link_libraries(wave_reader PRIVATE waveshare_cpp)
 
 # Enable testing
 if(BUILD_TESTS)

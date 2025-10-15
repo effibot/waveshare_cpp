@@ -30,4 +30,8 @@
 #include "pattern/frame_builder.hpp"
 // Include the USB adapter interface
 #include "pattern/usb_adapter.hpp"
+// Include the bridge configuration
+#include "pattern/bridge_config.hpp"
+// Include the SocketCAN bridge
+#include "pattern/socketcan_bridge.hpp"
 

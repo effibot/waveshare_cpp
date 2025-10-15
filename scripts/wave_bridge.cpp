@@ -1,5 +1,4 @@
-#include "include/pattern/socketcan_bridge.hpp"
-#include "include/pattern/bridge_config.hpp"
+#include "../include/waveshare.hpp"
 #include <iostream>
 #include <iomanip>
 #include <csignal>
