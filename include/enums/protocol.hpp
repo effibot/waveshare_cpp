@@ -213,8 +213,11 @@ namespace waveshare {
      *
      * @note Choose the highest rate that provides stable communication for your
      * setup.
+     *
      * - 9600 bps: Very stable, compatible with most systems
+     *
      * - 115200 bps: Common high-speed rate, good for most applications
+     *
      * - 1.2288 Mbps and 2 Mbps: Very high speeds, may require quality cables and
      *   short distances
      */
@@ -284,6 +287,43 @@ namespace waveshare {
     }
 
     /**
+     * @brief Converts a string into its corresponding CANMode enum value.
+     * @param mode_str The string representation of the CAN mode
+     * @param use_default Output parameter set to true if default mode is used
+     * @return CANMode The corresponding CANMode enum value
+     */
+    inline CANMode canmode_from_string(const std::string& mode_str, bool& use_default) {
+        use_default = false;
+        if (mode_str == "normal") {
+            return CANMode::NORMAL;
+        } else if (mode_str == "loopback") {
+            return CANMode::LOOPBACK;
+        } else if (mode_str == "silent") {
+            return CANMode::SILENT;
+        } else if (mode_str == "loopback_silent") {
+            return CANMode::LOOPBACK_SILENT;
+        } else {
+            use_default = true;
+            return DEFAULT_CAN_MODE; // Default to NORMAL if unrecognized
+        }
+    }
+
+    /**
+     * @brief Converts a CANMode enum value to its string representation.
+     * @param mode The CANMode enum value
+     * @return std::string The string representation of the CAN mode
+     */
+    inline std::string canmode_to_string(CANMode mode) {
+        switch (mode) {
+        case CANMode::NORMAL: return "normal";
+        case CANMode::LOOPBACK: return "loopback";
+        case CANMode::SILENT: return "silent";
+        case CANMode::LOOPBACK_SILENT: return "loopback_silent";
+        default: return "unknown";
+        }
+    }
+
+    /**
      * @brief Converts SerialBaud enum to speed_t.
      *
      * @param baud The SerialBaud enum value
@@ -301,6 +341,65 @@ namespace waveshare {
      */
     constexpr SerialBaud from_speed_t(speed_t speed) {
         return static_cast<SerialBaud>(speed);
+    }
+
+    /**
+     * @brief Converts an integer to its corresponding SerialBaud enum value.
+     * @param baud The integer baud rate
+     * @param use_default Output parameter set to true if default baud is used
+     * @return SerialBaud The corresponding SerialBaud enum value
+     */
+    constexpr SerialBaud serialbaud_from_int(int baud, bool& use_default) {
+        use_default = false;
+        switch (baud) {
+        case 9600:   return SerialBaud::BAUD_9600;
+        case 19200:  return SerialBaud::BAUD_19200;
+        case 38400:  return SerialBaud::BAUD_38400;
+        case 57600:  return SerialBaud::BAUD_57600;
+        case 115200: return SerialBaud::BAUD_115200;
+        case 153600: return SerialBaud::BAUD_153600;
+        case 2000000: return SerialBaud::BAUD_2M;
+        default:
+            use_default = true;
+            return DEFAULT_SERIAL_BAUD;  // Default to 2Mbps if unrecognized
+        }
+    }
+
+    /**
+     * @brief Converts an integer to its corresponding CANBaud enum value.
+     * @param baud The integer baud rate
+     * @param use_default Output parameter set to true if default baud is used
+     * @return CANBaud The corresponding CANBaud enum value
+     */
+    constexpr CANBaud canbaud_from_int(int baud, bool& use_default) {
+        use_default = false;
+        switch (baud) {
+        case 5000:   return CANBaud::BAUD_5K;
+        case 10000:  return CANBaud::BAUD_10K;
+        case 20000:  return CANBaud::BAUD_20K;
+        case 50000:  return CANBaud::BAUD_50K;
+        case 100000: return CANBaud::BAUD_100K;
+        case 125000: return CANBaud::BAUD_125K;
+        case 200000: return CANBaud::BAUD_200K;
+        case 250000: return CANBaud::BAUD_250K;
+        case 400000: return CANBaud::BAUD_400K;
+        case 500000: return CANBaud::BAUD_500K;
+        case 800000: return CANBaud::BAUD_800K;
+        case 1000000: return CANBaud::BAUD_1M;
+        default:
+            use_default = true;
+            return DEFAULT_CAN_BAUD;  // Default to 1Mbps if unrecognized
+        }
+    }
+
+    /**
+     * @brief Converts a boolean into the AutoRTX enum value.
+     *
+     * @param value The boolean value
+     * @return AutoRTX The corresponding AutoRTX enum value
+     */
+    constexpr RTX rtx_from_bool(bool value) {
+        return value ? RTX::AUTO : RTX::OFF;
     }
 
     // === Byte Manipulation Helpers ===

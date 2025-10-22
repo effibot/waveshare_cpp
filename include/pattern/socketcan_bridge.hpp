@@ -132,9 +132,13 @@ namespace waveshare {
      * @brief SocketCAN bridge for Waveshare USB-CAN adapter
      *
      * Architecture:
+     *
      * - Manages SocketCAN socket lifecycle
+     *
      * - Integrates USBAdapter for serial communication
+     *
      * - Bidirectional frame forwarding (future phases)
+     *
      * - Thread-safe operation with proper cleanup
      */
     class SocketCANBridge {
@@ -178,6 +182,14 @@ namespace waveshare {
              * @return const BridgeConfig& Configuration reference
              */
             const BridgeConfig& get_config() const { return config_; }
+
+            /**
+             * @brief Check if the underlying USB port is open
+             * @return bool True if USB port is open
+             */
+            bool is_usb_open() const {
+                return adapter_ && adapter_->is_open();
+            }
 
             /**
              * @brief Check if SocketCAN socket is open

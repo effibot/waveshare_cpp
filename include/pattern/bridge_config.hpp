@@ -30,15 +30,25 @@ namespace waveshare {
      * @brief Configuration for SocketCAN-Waveshare bridge
      *
      * Environment Variables:
+     *
      * - WAVESHARE_SOCKETCAN_INTERFACE: SocketCAN interface name (default: "vcan0")
+     *
      * - WAVESHARE_USB_DEVICE: USB device path (default: "/dev/ttyUSB0")
+     *
      * - WAVESHARE_SERIAL_BAUD: Serial baud rate in bps (default: 2000000)
+     *
      * - WAVESHARE_CAN_BAUD: CAN bus baud rate enum value (default: 1000000)
+     *
      * - WAVESHARE_CAN_MODE: CAN mode (normal/loopback/silent/silent-loopback, default: normal)
+     *
      * - WAVESHARE_AUTO_RETRANSMIT: Auto retransmit (true/false, default: true)
+     *
      * - WAVESHARE_FILTER_ID: CAN filter ID (default: 0)
+     *
      * - WAVESHARE_FILTER_MASK: CAN filter mask (default: 0)
+     *
      * - WAVESHARE_USB_READ_TIMEOUT: USB read timeout in ms (default: 100)
+     *
      * - WAVESHARE_SOCKETCAN_READ_TIMEOUT: SocketCAN read timeout in ms (default: 100)
      */
     struct BridgeConfig {
