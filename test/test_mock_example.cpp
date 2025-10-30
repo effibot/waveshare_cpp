@@ -8,8 +8,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "mocks/mock_serial_port.hpp"
 #include "mocks/mock_can_socket.hpp"
-#include "pattern/socketcan_bridge.hpp"
-#include "pattern/usb_adapter.hpp"
 #include <thread>
 #include <chrono>
 
