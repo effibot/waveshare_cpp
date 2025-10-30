@@ -1,5 +1,10 @@
 include(CTest)
 
+# Set CMake policy for linker search path behavior
+if(COMMAND cmake_policy)
+    cmake_policy(SET CMP0003 NEW)
+endif(COMMAND cmake_policy)
+
 # Copy .env file to build root directory for tests (CTest runs from there)
 if(EXISTS "${PROJECT_SOURCE_DIR}/.env")
     configure_file(
