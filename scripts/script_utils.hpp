@@ -129,7 +129,7 @@ namespace waveshare {
     inline ScriptConfig parse_arguments(int argc, char* argv[], bool is_reader) {
         ScriptConfig config;
         int opt;
-
+        bool baud_not_found = false;
         while ((opt = getopt(argc, argv, "hd:s:b:f:")) != -1) {
             switch (opt) {
             case 'h':
@@ -142,7 +142,11 @@ namespace waveshare {
 
             case 's':
                 try {
-                    config.serial_baudrate = parse_serial_baudrate(optarg);
+                    config.serial_baudrate = serialbaud_from_int(std::stoi(optarg), baud_not_found);
+                    if (baud_not_found) {
+                        throw std::invalid_argument("Unsupported serial baudrate: " +
+                            std::string(optarg));
+                    }
                 } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid serial baudrate: " << optarg << "\n";
                     std::cerr << "Supported: 9600, 19200, 38400, 57600, 115200, 153600, 2000000\n";
@@ -152,7 +156,11 @@ namespace waveshare {
 
             case 'b':
                 try {
-                    config.can_baudrate = parse_can_baudrate(optarg);
+                    config.can_baudrate = canbaud_from_int(std::stoi(optarg), baud_not_found);
+                    if (baud_not_found) {
+                        throw std::invalid_argument("Unsupported CAN baudrate: " +
+                            std::string(optarg));
+                    }
                 } catch (const std::invalid_argument& e) {
                     std::cerr << "Invalid CAN baudrate: " << optarg << "\n";
                     std::cerr <<
@@ -192,25 +200,6 @@ namespace waveshare {
 // === Adapter Configuration ===
 
 /**
- * @brief Create and configure a ConfigFrame based on script configuration
- * @param config Script configuration
- * @return ConfigFrame Configured frame ready to send
- */
-    inline ConfigFrame create_config_frame(const ScriptConfig& config) {
-        Type type = config.use_fixed_frames ? Type::CONF_FIXED : Type::CONF_VARIABLE;
-
-        return make_config_frame()
-               .with_type(type)
-               .with_baud_rate(config.can_baudrate)
-               .with_can_version(CANVersion::STD_FIXED)
-               .with_filter(0x00000000)
-               .with_mask(0x00000000)
-               .with_mode(CANMode::NORMAL)
-               .with_rtx(RTX::OFF)
-               .build();
-    }
-
-/**
  * @brief Initialize USB adapter with configuration
  * @param config Script configuration
  * @return std::unique_ptr<USBAdapter> Initialized adapter (ownership transferred)
@@ -224,13 +213,15 @@ namespace waveshare {
         auto config_frame = FrameBuilder<ConfigFrame>()
             .with_can_version(config.use_fixed_frames ? CANVersion::STD_FIXED :
             CANVersion::STD_VARIABLE)
-            .with_type(Type::CONF_FIXED)
             .with_baud_rate(config.can_baudrate)
             .with_mode(CANMode::NORMAL)
+            .with_rtx(RTX::AUTO)       // Enable auto-retransmit like bridge
             .with_filter(0x00000000)
-            .with_mask(0xFFFFFFFF)
+            .with_mask(0x00000000)
             .build();
 
+        std::cout << "Sending configuration frame to adapter:" << config_frame.to_string() <<
+            std::endl;
         adapter->send_frame(config_frame);  // Throws on error
 
         return adapter;

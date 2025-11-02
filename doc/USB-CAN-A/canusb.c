@@ -505,6 +505,9 @@ static void display_help(const char *progname)
 static void sigterm(int signo)
 {
 	program_running = 0;
+	// propagate signal to default handler
+	signal(signo, SIG_DFL);
+	raise(signo);
 }
 
 int main(int argc, char *argv[])
@@ -573,7 +576,7 @@ int main(int argc, char *argv[])
 	if (tty_fd == -1)
 		return EXIT_FAILURE;
 
-	command_settings(tty_fd, speed, CANUSB_MODE_NORMAL,
+	command_settings(tty_fd, speed, CANUSB_MODE_LOOPBACK,
 	                 CANUSB_FRAME_STANDARD);
 
 	if (inject_data == NULL) {

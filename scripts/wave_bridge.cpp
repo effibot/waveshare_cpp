@@ -1,4 +1,5 @@
 #include "../include/waveshare.hpp"
+#include "script_utils.hpp"
 #include <iostream>
 #include <iomanip>
 #include <csignal>
@@ -48,34 +49,85 @@ void signal_handler(int signal) {
     }
 }
 
+void display_help(const std::string& program_name) {
+    std::cout << "Usage: " << program_name << " [OPTIONS]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  -i <interface> SocketCAN interface (default: vcan0)\n";
+    std::cout << "  -d <device>    USB device path (default: /dev/ttyUSB0)\n";
+    std::cout << "  -s <baudrate>  Serial baudrate (default: 2000000)\n";
+    std::cout << "                 Supported: 9600, 19200, 38400, 57600, 115200, 153600, 2000000\n";
+    std::cout << "  -c <baudrate>  CAN bus baudrate (default: 1000000)\n";
+    std::cout << "                 Supported: 10000, 20000, 50000, 100000, 125000, 200000,\n";
+    std::cout << "                            250000, 400000, 500000, 800000, 1000000\n";
+    std::cout << "  -h             Display this help message\n";
+    std::cout << "\n";
+    std::cout << "Example:\n";
+    std::cout << "  " << program_name << " -i vcan0 -d /dev/ttyUSB0 -s 2000000 -c 1000000\n";
+    std::cout << "\n";
+}
+
 int main(int argc, char* argv[]) {
     std::cout << "=== SocketCAN Bridge Manual Test ===\n\n";
 
     try {
-        // Parse command-line arguments for interface and device
+        // Default configuration
         std::string socketcan_interface = "vcan0";
-        std::string usb_device = "/dev/ttyUSB0";
+        ScriptConfig script_config;
+        script_config.device = "/dev/ttyUSB0";
+        script_config.serial_baudrate = SerialBaud::BAUD_2M;
+        script_config.can_baudrate = CANBaud::BAUD_1M;
+        script_config.use_fixed_frames = false;
 
-        if (argc > 1) {
-            socketcan_interface = argv[1];
-        }
-        if (argc > 2) {
-            usb_device = argv[2];
+        // Parse command-line arguments
+        for (int i = 1; i < argc; i++) {
+            std::string arg = argv[i];
+
+            if (arg == "-h") {
+                display_help(argv[0]);
+                return 0;
+            } else if (arg == "-i" && i + 1 < argc) {
+                socketcan_interface = argv[++i];
+            } else if (arg == "-d" && i + 1 < argc) {
+                script_config.device = argv[++i];
+            } else if (arg == "-s" && i + 1 < argc) {
+                int serial_baudrate = std::stoi(argv[++i]);
+                bool baud_not_found = false;
+                script_config.serial_baudrate = serialbaud_from_int(serial_baudrate,
+                    baud_not_found);
+                if (baud_not_found) {
+                    throw std::invalid_argument("Unsupported serial baudrate: " +
+                        std::to_string(serial_baudrate));
+                }
+            } else if (arg == "-c" && i + 1 < argc) {
+                int can_baudrate = std::stoi(argv[++i]);
+                bool baud_not_found = false;
+                script_config.can_baudrate = canbaud_from_int(can_baudrate, baud_not_found);
+                if (baud_not_found) {
+                    throw std::invalid_argument("Unsupported CAN baudrate: " +
+                        std::to_string(can_baudrate));
+                }
+            } else {
+                std::cerr << "Unknown argument: " << arg << "\n";
+                display_help(argv[0]);
+                return 1;
+            }
         }
 
         std::cout << "Configuration:\n";
         std::cout << "  SocketCAN Interface: " << socketcan_interface << "\n";
-        std::cout << "  USB Device:          " << usb_device << "\n";
-        std::cout << "  Serial Baud:         2000000 (2Mbps)\n";
-        std::cout << "  CAN Baud:            1000000 (1Mbps)\n";
+        std::cout << "  USB Device:          " << script_config.device << "\n";
+        std::cout << "  Serial Baud:         " << static_cast<int>(script_config.serial_baudrate) <<
+            " bps\n";
+        std::cout << "  CAN Baud:            " << static_cast<int>(script_config.can_baudrate) <<
+            " bps\n";
         std::cout << "  CAN Mode:            NORMAL\n\n";
 
-        // Create configuration
+        // Create bridge configuration
         BridgeConfig config = BridgeConfig::create_default();
         config.socketcan_interface = socketcan_interface;
-        config.usb_device_path = usb_device;
-        config.serial_baud_rate = SerialBaud::BAUD_2M;
-        config.can_baud_rate = CANBaud::BAUD_1M;
+        config.usb_device_path = script_config.device;
+        config.serial_baud_rate = script_config.serial_baudrate;
+        config.can_baud_rate = script_config.can_baudrate;
         config.can_mode = CANMode::NORMAL;
         config.auto_retransmit = true;
         config.usb_read_timeout_ms = 100;

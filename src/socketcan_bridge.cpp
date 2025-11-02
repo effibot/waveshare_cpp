@@ -65,10 +65,12 @@ namespace waveshare {
 
         // Configure USB adapter for CAN
         ConfigFrame can_config = FrameBuilder<ConfigFrame>()
+            .with_can_version(CANVersion::STD_FIXED)
             .with_baud_rate(config.can_baud_rate)
             .with_mode(config.can_mode)
             .with_filter(config.filter_id)
             .with_mask(config.filter_mask)
+            .with_rtx(config.auto_retransmit ? RTX::AUTO : RTX::OFF)
             .build();
 
         usb_adapter->send_frame(can_config);

@@ -112,6 +112,8 @@ namespace waveshare {
         tty_.c_lflag = 0;        // Non-canonical mode, no echo, no signals
         tty_.c_ispeed = baud;    // Set input baud rate
         tty_.c_ospeed = baud;    // Set output baud rate
+        tty_.c_cc[VTIME] = 1;  // 0.1 second timeout
+        tty_.c_cc[VMIN] = 0;   // Return immediately if data available
 
         // Apply the settings to the port
         result = ::ioctl(fd_, TCSETS2, &tty_);
