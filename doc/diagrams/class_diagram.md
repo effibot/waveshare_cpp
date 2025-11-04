@@ -1,205 +1,461 @@
+# Waveshare USB-CAN Library - Class Diagram
+
+This diagram shows the complete class hierarchy and relationships in the Waveshare USB-CAN C++ library, including frame classes, interfaces, adapters, and bridge components.
+
 ```mermaid
+
+---
+config:
+  theme: "dark"
+  themeVariables: {
+    "primaryColor": "#C5D6DE",
+    "primaryTextColor": "#1a1a1a",
+    "primaryBorderColor": "#6b8a96",
+    "lineColor": "#703B3B",
+    "secondaryColor": "#EBE3D3",
+    "tertiaryColor": "#B9A788",
+    "mainBkg": "#C5D6DE",
+    "secondBkg": "#EBE3D3",
+    "tertiaryBkg": "#B9A788",
+    "mainContrastColor": "#ffffff",
+    "darkMode": false,
+    "background": "#ffffff",
+    "fontSize": "16px",
+    "fontFamily": "\"Segoe UI\", \"Roboto\", \"Helvetica Neue\", sans-serif",
+    "nodeBorder": "#703B3B",
+    "clusterBkg": "#EBE3D3",
+    "clusterBorder": "#A18D6D",
+    "defaultLinkColor": "#703B3B",
+    "titleColor": "#703B3B",
+    "edgeLabelBackground": "#ffffff",
+    "actorBorder": "#703B3B",
+    "actorBkg": "#C5D6DE",
+    "actorTextColor": "#1a1a1a",
+    "actorLineColor": "#703B3B",
+    "signalColor": "#1a1a1a",
+    "signalTextColor": "#1a1a1a",
+    "labelBoxBkgColor": "#EBE3D3",
+    "labelBoxBorderColor": "#A18D6D",
+    "labelTextColor": "#1a1a1a",
+    "loopTextColor": "#1a1a1a",
+    "noteBorderColor": "#A18D6D",
+    "noteBkgColor": "#f5f5f5",
+    "noteTextColor": "#1a1a1a",
+    "activationBorderColor": "#703B3B",
+    "activationBkgColor": "#EBE3D3",
+    "sequenceNumberColor": "#ffffff"
+  }
+---
 classDiagram
-    %% Core Template Classes
+    %% ===================================================================
+    %% Core State Objects (State-First Architecture)
+    %% ===================================================================
+    
+    class CoreState {
+        <<struct>>
+        +Type type
+        +CANVersion can_version
+    }
+    
+    class DataState {
+        <<struct>>
+        +Format format
+        +uint32_t can_id
+        +uint8_t dlc
+        +vector~uint8_t~ data
+    }
+    
+    class ConfigState {
+        <<struct>>
+        +CANBaud baud_rate
+        +CANMode can_mode
+        +RTX auto_rtx
+        +uint32_t filter
+        +uint32_t mask
+    }
+    
+    %% ===================================================================
+    %% Core Template Interfaces (CRTP Pattern)
+    %% ===================================================================
+    
     class CoreInterface~Frame~ {
         <<interface>>
-        #storage_t~Frame~ buffer_
-        #frame_traits_t~Frame~ traits_
-        +get_buffer() storage_t~Frame~
-        +get_layout() layout_t~Frame~
-        +get_traits() frame_traits_t~Frame~
-        +derived() Frame&
-        #impl_init_fields()*
+        #CoreState core_state_
+        +Type get_type()
+        +void set_type(Type)
+        +CANVersion get_can_version()
+        +void set_can_version(CANVersion)
+        +vector~uint8_t~ serialize()
+        +void deserialize(span)
+        +size_t serialized_size()
+        +string to_string()
+        #Frame& derived()
+        #vector~uint8_t~ impl_serialize()*
+        #void impl_deserialize(span)*
+        #size_t impl_serialized_size()*
     }
     
     class DataInterface~Frame~ {
         <<interface>>
-        +get_CAN_id() uint32_t
-        +set_CAN_id(uint32_t)
-        +get_dlc() uint8_t
-        +set_dlc(uint8_t)
-        +get_data() span~byte~
-        +set_data(span~byte~)
-        +is_extended() bool
-        +get_format() Format
-        +set_format(Format)
-        #impl_get_CAN_id()*
-        #impl_set_CAN_id()*
-        #impl_get_dlc()*
-        #impl_set_dlc()*
+        #DataState data_state_
+        +uint32_t get_id()
+        +void set_id(uint32_t)
+        +uint8_t get_dlc()
+        +span~uint8_t~ get_data()
+        +void set_data(span)
+        +bool is_extended()
+        +Format get_format()
+        +void set_format(Format)
+        #bool impl_is_extended()*
     }
     
     class ConfigInterface~Frame~ {
         <<interface>>
-        +get_baud_rate() BaudRate
-        +set_baud_rate(BaudRate)
-        +get_mode() Mode
-        +set_mode(Mode)
-        +get_filter() uint32_t
-        +set_filter(uint32_t)
-        +get_mask() uint32_t
-        +set_mask(uint32_t)
-        +finalize() Result~bool~
+        #ConfigState config_state_
+        +CANBaud get_baud_rate()
+        +void set_baud_rate(CANBaud)
+        +CANMode get_can_mode()
+        +void set_can_mode(CANMode)
+        +RTX get_auto_rtx()
+        +void set_auto_rtx(RTX)
+        +uint32_t get_filter()
+        +void set_filter(uint32_t)
+        +uint32_t get_mask()
+        +void set_mask(uint32_t)
     }
     
-    class ChecksumInterface~Frame~ {
-        <<interface>>
-        -bool is_dirty_
-        +calculate_checksum() byte
-        +verify_checksum() bool
-        +update_checksum() void
-        +mark_dirty() void
-        +mark_clean() void
-    }
-    
-    class VarTypeInterface~Frame~ {
-        <<interface>>
-        -bool type_dirty_
-        +reconstruct_type() void
-        +get_type_byte() byte
-        +mark_dirty() void
-        +mark_clean() void
-    }
-    
+    %% ===================================================================
     %% Concrete Frame Classes
+    %% ===================================================================
+    
     class FixedFrame {
-        -array~byte,20~ buffer_
+        -Traits traits_
+        -Layout layout_
         +FixedFrame()
-        +impl_init_fields() void
-        +impl_get_type() byte
-        +impl_set_type(byte)
-        +impl_get_CAN_id() uint32_t
-        +impl_set_CAN_id(uint32_t)
-        +impl_get_dlc() uint8_t
-        +impl_set_dlc(uint8_t)
+        +FixedFrame(Format, CANVersion, uint32_t, span)
+        +vector~uint8_t~ impl_serialize()
+        +void impl_deserialize(span)
+        +size_t impl_serialized_size()
+        +bool impl_is_extended()
     }
     
     class VariableFrame {
-        -span~byte~ buffer_
+        -Traits traits_
+        -Layout layout_
         +VariableFrame()
-        +impl_init_fields() void
-        +impl_get_type() byte
-        +impl_set_type(byte)
-        +impl_get_CAN_id() uint32_t
-        +impl_set_CAN_id(uint32_t)
-        +impl_get_dlc() uint8_t
-        +impl_set_dlc(uint8_t)
-        +resize_buffer(size_t) void
+        +VariableFrame(Format, CANVersion, uint32_t, span)
+        +vector~uint8_t~ impl_serialize()
+        +void impl_deserialize(span)
+        +size_t impl_serialized_size()
+        +bool impl_is_extended()
     }
     
     class ConfigFrame {
-        -array~byte,20~ buffer_
+        -Traits traits_
+        -Layout layout_
         +ConfigFrame()
-        +impl_init_fields() void
-        +impl_get_type() byte
-        +impl_set_type(byte)
-        +finalize() Result~bool~
+        +ConfigFrame(Type, CANBaud, CANMode, RTX, uint32_t, uint32_t, CANVersion)
+        +vector~uint8_t~ impl_serialize()
+        +void impl_deserialize(span)
+        +size_t impl_serialized_size()
     }
     
-    %% Traits and Layout
+    %% ===================================================================
+    %% Frame Builder Pattern
+    %% ===================================================================
+    
+    class FrameBuilder~Frame~ {
+        -FrameBuilderState~Frame~ state_
+        +FrameBuilder& with_type(Type)
+        +FrameBuilder& with_can_version(CANVersion)
+        +FrameBuilder& with_format(Format)
+        +FrameBuilder& with_id(uint32_t)
+        +FrameBuilder& with_data(span)
+        +FrameBuilder& with_baud_rate(CANBaud)
+        +FrameBuilder& with_mode(CANMode)
+        +FrameBuilder& with_rtx(RTX)
+        +FrameBuilder& with_filter(uint32_t)
+        +FrameBuilder& with_mask(uint32_t)
+        +FrameBuilder& finalize()
+        +Frame build()
+    }
+    
+    class FrameBuilderState~Frame~ {
+        <<struct>>
+        +optional~Type~ type
+        +optional~CANVersion~ can_version
+        +optional~Format~ format
+        +optional~uint32_t~ can_id
+        +optional~vector~ data
+        +optional~CANBaud~ baud_rate
+        +optional~CANMode~ can_mode
+        +bool finalized
+    }
+    
+    %% ===================================================================
+    %% I/O Abstraction Interfaces (Dependency Injection)
+    %% ===================================================================
+    
+    class ISerialPort {
+        <<interface>>
+        +ssize_t write(data, len)*
+        +ssize_t read(data, len, timeout)*
+        +void close()*
+        +bool is_open()*
+    }
+    
+    class RealSerialPort {
+        -int fd_
+        -string device_path_
+        -SerialBaud baud_rate_
+        -termios2 tty_
+        -bool is_open_
+        +RealSerialPort(device, baud)
+        +ssize_t write(data, len)
+        +ssize_t read(data, len, timeout)
+        +void close()
+        +bool is_open()
+        -void open_port()
+        -void configure_port()
+    }
+    
+    class ICANSocket {
+        <<interface>>
+        +int send(can_frame)*
+        +can_frame receive(timeout)*
+        +int get_fd()*
+        +bool is_open()*
+        +void close()*
+    }
+    
+    class RealCANSocket {
+        -int sockfd_
+        -string interface_name_
+        -uint32_t read_timeout_ms_
+        -bool is_open_
+        +RealCANSocket(interface, timeout)
+        +int send(can_frame)
+        +can_frame receive(timeout)
+        +int get_fd()
+        +bool is_open()
+        +void close()
+        -void open_socket()
+        -void configure_socket()
+    }
+    
+    %% ===================================================================
+    %% USB Adapter (Thread-Safe Serial Communication)
+    %% ===================================================================
+    
+    class USBAdapter {
+        -unique_ptr~ISerialPort~ serial_port_
+        -string usb_device_
+        -SerialBaud baudrate_
+        -bool is_configured_
+        -shared_mutex state_mutex_
+        -mutex write_mutex_
+        -mutex read_mutex_
+        -static atomic~sig_atomic_t~ stop_flag
+        +unique_ptr~USBAdapter~ create(device, baud)$
+        +USBAdapter(serial_port, device, baud)
+        +void send_frame~T~(frame)
+        +FixedFrame receive_fixed_frame(timeout)
+        +VariableFrame receive_variable_frame(timeout)
+        +bool is_open()
+        +bool is_configured()
+        +bool should_stop()$
+        -void write_bytes(data, size)
+        -ssize_t read_bytes(buffer, size, timeout)
+        -void read_exact(buffer, size, timeout)
+    }
+    
+    %% ===================================================================
+    %% SocketCAN Bridge (Bidirectional Forwarding)
+    %% ===================================================================
+    
+    class BridgeConfig {
+        <<struct>>
+        +string socketcan_interface
+        +string usb_device_path
+        +SerialBaud serial_baud_rate
+        +CANBaud can_baud_rate
+        +CANMode can_mode
+        +bool auto_retransmit
+        +uint32_t filter_id
+        +uint32_t filter_mask
+        +uint32_t usb_read_timeout_ms
+        +uint32_t socketcan_read_timeout_ms
+        +void validate()
+        +BridgeConfig create_default()$
+        +BridgeConfig from_env()$
+        +BridgeConfig from_file(path)$
+        +BridgeConfig load(path)$
+    }
+    
+    class BridgeStatistics {
+        <<struct>>
+        +atomic~uint64_t~ usb_rx_frames
+        +atomic~uint64_t~ usb_tx_frames
+        +atomic~uint64_t~ socketcan_rx_frames
+        +atomic~uint64_t~ socketcan_tx_frames
+        +atomic~uint64_t~ usb_rx_errors
+        +atomic~uint64_t~ usb_tx_errors
+        +atomic~uint64_t~ socketcan_rx_errors
+        +atomic~uint64_t~ socketcan_tx_errors
+        +atomic~uint64_t~ conversion_errors
+        +void reset()
+        +string to_string()
+    }
+    
+    class BridgeStatisticsSnapshot {
+        <<struct>>
+        +uint64_t usb_rx_frames
+        +uint64_t usb_tx_frames
+        +uint64_t socketcan_rx_frames
+        +uint64_t socketcan_tx_frames
+        +uint64_t usb_rx_errors
+        +uint64_t usb_tx_errors
+        +uint64_t socketcan_rx_errors
+        +uint64_t socketcan_tx_errors
+        +uint64_t conversion_errors
+        +string to_string()
+    }
+    
+    class SocketCANBridge {
+        -BridgeConfig config_
+        -unique_ptr~ICANSocket~ can_socket_
+        -unique_ptr~USBAdapter~ adapter_
+        -BridgeStatistics stats_
+        -atomic~bool~ running_
+        -thread usb_to_socketcan_thread_
+        -thread socketcan_to_usb_thread_
+        -mutex callback_mutex_
+        -function callbacks_
+        +unique_ptr~SocketCANBridge~ create(config)$
+        +SocketCANBridge(config, socket, adapter)
+        +void start()
+        +void stop()
+        +bool is_running()
+        +BridgeStatisticsSnapshot get_statistics()
+        +void reset_statistics()
+        +void set_usb_to_socketcan_callback(fn)
+        +void set_socketcan_to_usb_callback(fn)
+        +bool is_usb_open()
+        +bool is_socketcan_open()
+        +int get_socketcan_fd()
+        +USBAdapter* get_adapter()
+        -void initialize_usb_adapter()
+        -void configure_usb_adapter()
+        -void verify_adapter_config()
+        -void usb_to_socketcan_loop()
+        -void socketcan_to_usb_loop()
+    }
+    
+    %% ===================================================================
+    %% Helper Classes
+    %% ===================================================================
+    
+    class SocketCANHelper {
+        <<utility>>
+        +can_frame to_socketcan(VariableFrame)$
+        +VariableFrame from_socketcan(can_frame)$
+    }
+    
+    class ChecksumHelper {
+        <<utility>>
+        +uint8_t compute(buffer, start, end)$
+        +bool validate(buffer, pos, start, end)$
+    }
+    
+    class VarTypeHelper {
+        <<utility>>
+        +uint8_t encode(is_ext, format, dlc)$
+        +tuple decode(type_byte)$
+    }
+    
+    %% ===================================================================
+    %% Frame Traits System (Compile-Time Metadata)
+    %% ===================================================================
+    
     class FrameTraits~Frame~ {
         <<trait>>
         +StorageType
         +LayoutType
-        +has_checksum : bool$
-        +is_data_frame : bool$
-        +is_config_frame : bool$
+        +FRAME_SIZE
+        +MIN_SIZE
+        +MAX_SIZE
+        +HAS_CHECKSUM
     }
     
     class FixedFrameLayout {
-        +START : size_t$
-        +HEADER : size_t$
-        +TYPE : size_t$
-        +CAN_VERS : size_t$
-        +FORMAT : size_t$
-        +ID : size_t$
-        +DLC : size_t$
-        +DATA : size_t$
-        +RESERVED : size_t$
-        +CHECKSUM : size_t$
-        +SIZE : size_t$
+        <<struct>>
+        +START = 0
+        +HEADER = 1
+        +TYPE = 2
+        +CAN_VERS = 3
+        +FORMAT = 4
+        +ID = 5
+        +DLC = 9
+        +DATA = 10
+        +RESERVED = 18
+        +CHECKSUM = 19
     }
     
     class VariableFrameLayout {
-        +START : size_t$
-        +TYPE : size_t$
-        +ID : size_t$
-        +DATA : size_t$
-        +END : size_t$
-        +id_size(bool) size_t$
-        +data_offset(bool) size_t$
-        +calculate_size(bool, uint8_t) size_t$
+        <<struct>>
+        +START = 0
+        +TYPE = 1
+        +ID_START = 2
+        +size_t get_data_start(is_ext)$
+        +size_t get_end_pos(is_ext, dlc)$
     }
     
     class ConfigFrameLayout {
-        +START : size_t$
-        +HEADER : size_t$
-        +TYPE : size_t$
-        +CAN_VERS : size_t$
-        +FORMAT : size_t$
-        +BAUD_RATE : size_t$
-        +MODE : size_t$
-        +FILTER : size_t$
-        +MASK : size_t$
-        +RESERVED : size_t$
-        +CHECKSUM : size_t$
-        +SIZE : size_t$
+        <<struct>>
+        +START = 0
+        +HEADER = 1
+        +TYPE = 2
+        +CAN_BAUD = 3
+        +CAN_VERS = 4
+        +FILTER = 5
+        +MASK = 9
+        +CAN_MODE = 13
+        +AUTO_RTX = 14
+        +RESERVED = 15
+        +CHECKSUM = 19
     }
     
-    %% Builder Pattern
-    class FrameBuilder~Frame~ {
-        -optional~CANVersion~ can_version_
-        -optional~Format~ format_
-        -optional~uint32_t~ id_
-        -optional~uint8_t~ dlc_
-        -optional~vector~byte~~ data_
-        -optional~BaudRate~ baud_rate_
-        -optional~Mode~ mode_
-        +FrameBuilder()
-        +with_can_version(CANVersion) FrameBuilder&
-        +with_format(Format) FrameBuilder&
-        +with_id(uint32_t) FrameBuilder&
-        +with_dlc(uint8_t) FrameBuilder&
-        +with_data(span~byte~) FrameBuilder&
-        +with_baud_rate(BaudRate) FrameBuilder&
-        +with_mode(Mode) FrameBuilder&
-        +validate_state() Result~bool~
-        +build() Result~Frame~
+    %% ===================================================================
+    %% Exception Hierarchy
+    %% ===================================================================
+    
+    class WaveshareException {
+        -Status status_
+        +WaveshareException(status, msg)
+        +Status status()
+        +string what()
     }
     
-    %% Result Type
-    class Result~T~ {
-        -optional~T~ value_
-        -Status error_
-        -vector~string~ context_chain_
-        +success(T) Result~T~$
-        +failure(Status) Result~T~$
-        +ok() bool
-        +fail() bool
-        +value() T&
-        +error() Status
-        +describe() string
-        +add_context(string) Result&
+    class ProtocolException {
+        +ProtocolException(status, context)
     }
     
-    class Status {
-        <<enumeration>>
-        SUCCESS
-        INVALID_START_BYTE
-        INVALID_TYPE
-        INVALID_CAN_VERSION
-        INVALID_FORMAT
-        INVALID_ID
-        INVALID_DLC
-        INVALID_DATA_SIZE
-        CHECKSUM_MISMATCH
-        INVALID_BAUD_RATE
-        INVALID_MODE
-        BUFFER_TOO_SMALL
-        BUILDER_MISSING_FIELD
+    class DeviceException {
+        +DeviceException(status, context)
     }
     
+    class TimeoutException {
+        +TimeoutException(status, context)
+    }
+    
+    class CANException {
+        +CANException(status, context)
+    }
+    
+    %% ===================================================================
     %% Enumerations
+    %% ===================================================================
+    
     class CANVersion {
         <<enumeration>>
         STD_FIXED
@@ -208,17 +464,26 @@ classDiagram
         EXT_VARIABLE
     }
     
-    class Format {
+    class Type {
         <<enumeration>>
         DATA_FIXED
         DATA_VARIABLE
         CONF_FIXED
         CONF_VARIABLE
+        REMOTE_FIXED
+        REMOTE_VARIABLE
     }
     
-    class BaudRate {
+    class Format {
         <<enumeration>>
-        BAUD_5K
+        DATA_FIXED
+        DATA_VARIABLE
+        REMOTE_FIXED
+        REMOTE_VARIABLE
+    }
+    
+    class CANBaud {
+        <<enumeration>>
         BAUD_10K
         BAUD_20K
         BAUD_50K
@@ -226,12 +491,13 @@ classDiagram
         BAUD_125K
         BAUD_200K
         BAUD_250K
+        BAUD_400K
         BAUD_500K
         BAUD_800K
-        BAUD_1000K
+        BAUD_1M
     }
     
-    class Mode {
+    class CANMode {
         <<enumeration>>
         NORMAL
         LOOPBACK
@@ -239,57 +505,148 @@ classDiagram
         LOOPBACK_SILENT
     }
     
-    %% CRTP Inheritance Relationships
-    CoreInterface~Frame~ <|-- DataInterface~Frame~ : extends
-    CoreInterface~Frame~ <|-- ConfigInterface~Frame~ : extends
-    CoreInterface~FixedFrame~ <|-- FixedFrame : CRTP
-    DataInterface~FixedFrame~ <|-- FixedFrame : CRTP
-    ChecksumInterface~FixedFrame~ <|-- FixedFrame : CRTP
+    class SerialBaud {
+        <<enumeration>>
+        BAUD_9600
+        BAUD_19200
+        BAUD_38400
+        BAUD_57600
+        BAUD_115200
+        BAUD_153600
+        BAUD_2M
+    }
     
-    CoreInterface~VariableFrame~ <|-- VariableFrame : CRTP
-    DataInterface~VariableFrame~ <|-- VariableFrame : CRTP
-    VarTypeInterface~VariableFrame~ <|-- VariableFrame : CRTP
+    class RTX {
+        <<enumeration>>
+        OFF
+        AUTO
+    }
     
-    CoreInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
-    ConfigInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
-    ChecksumInterface~ConfigFrame~ <|-- ConfigFrame : CRTP
+    class Status {
+        <<enumeration>>
+        SUCCESS
+        WBAD_START
+        WBAD_CHECKSUM
+        WTIMEOUT
+        DNOT_FOUND
+        DBUSY
+        DREAD_ERROR
+        DWRITE_ERROR
+        ...
+    }
     
+    %% ===================================================================
+    %% State Relationships
+    %% ===================================================================
+    
+    CoreInterface~Frame~ *-- "1" CoreState : contains
+    DataInterface~Frame~ *-- "1" DataState : contains
+    ConfigInterface~Frame~ *-- "1" ConfigState : contains
+    
+    %% ===================================================================
+    %% CRTP Inheritance (Frame Hierarchy)
+    %% ===================================================================
+    
+    CoreInterface~FixedFrame~ <|-- DataInterface~FixedFrame~ : extends
+    DataInterface~FixedFrame~ <|-- FixedFrame : implements
+    
+    CoreInterface~VariableFrame~ <|-- DataInterface~VariableFrame~ : extends
+    DataInterface~VariableFrame~ <|-- VariableFrame : implements
+    
+    CoreInterface~ConfigFrame~ <|-- ConfigInterface~ConfigFrame~ : extends
+    ConfigInterface~ConfigFrame~ <|-- ConfigFrame : implements
+    
+    %% ===================================================================
+    %% I/O Interface Implementations
+    %% ===================================================================
+    
+    ISerialPort <|.. RealSerialPort : implements
+    ICANSocket <|.. RealCANSocket : implements
+    
+    %% ===================================================================
     %% Composition Relationships
-    CoreInterface~Frame~ *-- "1" FrameTraits~Frame~ : uses
-    FrameTraits~FixedFrame~ *-- "1" FixedFrameLayout : provides
-    FrameTraits~VariableFrame~ *-- "1" VariableFrameLayout : provides
-    FrameTraits~ConfigFrame~ *-- "1" ConfigFrameLayout : provides
+    %% ===================================================================
     
-    %% Builder Creates Frames
+    FrameBuilder~Frame~ *-- "1" FrameBuilderState~Frame~ : contains
     FrameBuilder~Frame~ ..> FixedFrame : creates
     FrameBuilder~Frame~ ..> VariableFrame : creates
     FrameBuilder~Frame~ ..> ConfigFrame : creates
     
-    %% Result Usage
-    FrameBuilder~Frame~ ..> Result~Frame~ : returns
-    ConfigInterface~Frame~ ..> Result~bool~ : returns
-    Result~T~ --> Status : contains
+    FrameTraits~FixedFrame~ *-- "1" FixedFrameLayout : provides
+    FrameTraits~VariableFrame~ *-- "1" VariableFrameLayout : provides
+    FrameTraits~ConfigFrame~ *-- "1" ConfigFrameLayout : provides
     
-    %% Frame uses Enums
-    DataInterface~Frame~ ..> CANVersion : uses
-    DataInterface~Frame~ ..> Format : uses
-    ConfigInterface~Frame~ ..> BaudRate : uses
-    ConfigInterface~Frame~ ..> Mode : uses
+    FixedFrame ..> FrameTraits~FixedFrame~ : uses
+    VariableFrame ..> FrameTraits~VariableFrame~ : uses
+    ConfigFrame ..> FrameTraits~ConfigFrame~ : uses
+    
+    USBAdapter *-- "1" ISerialPort : owns
+    USBAdapter ..> FixedFrame : sends/receives
+    USBAdapter ..> VariableFrame : sends/receives
+    USBAdapter ..> ConfigFrame : sends
+    
+    SocketCANBridge *-- "1" BridgeConfig : owns
+    SocketCANBridge *-- "1" BridgeStatistics : owns
+    SocketCANBridge *-- "1" BridgeStatisticsSnapshot : owns
+    SocketCANBridge *-- "1" ICANSocket : owns
+    SocketCANBridge *-- "1" USBAdapter : owns
+    SocketCANBridge ..> VariableFrame : converts
+    SocketCANBridge ..> ConfigFrame : uses
+    SocketCANBridge ..> SocketCANHelper : uses
+    
+    SocketCANHelper ..> VariableFrame : converts
+    
+    %% ===================================================================
+    %% Exception Hierarchy
+    %% ===================================================================
+    
+    std_runtime_error <|-- WaveshareException : extends
+    WaveshareException <|-- ProtocolException : extends
+    WaveshareException <|-- DeviceException : extends
+    WaveshareException <|-- TimeoutException : extends
+    WaveshareException <|-- CANException : extends
+    
+    %% ===================================================================
+    %% Enum Usage Relationships
+    %% ===================================================================
+    
+    CoreState ..> Type : uses
+    CoreState ..> CANVersion : uses
+    DataState ..> Format : uses
+    ConfigState ..> CANBaud : uses
+    ConfigState ..> CANMode : uses
+    ConfigState ..> RTX : uses
+    WaveshareException ..> Status : uses
+    USBAdapter ..> SerialBaud : uses
+    BridgeConfig ..> SerialBaud : uses
+    BridgeConfig ..> CANBaud : uses
+    BridgeConfig ..> CANMode : uses
+```
 
-    click CoreInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/core.hpp")
-    click DataInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/data.hpp")
-    click ConfigInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/config.hpp")
-    click ChecksumInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/checksum.hpp")
-    click VarTypeInterface call linkCallback("/home/effi/Projects/waveshare_cpp/include/interface/vartype.hpp")
-    click FixedFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/fixed_frame.hpp#L35")
-    click VariableFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/variable_frame.hpp#L23")
-    click ConfigFrame call linkCallback("/home/effi/Projects/waveshare_cpp/include/frame/config_frame.hpp#L34")
-    click FrameTraits call linkCallback("/home/effi/Projects/waveshare_cpp/include/template/frame_traits.hpp")
-    click FrameBuilder call linkCallback("/home/effi/Projects/waveshare_cpp/include/pattern/frame_builder.hpp#L178")
-    click Result call linkCallback("/home/effi/Projects/waveshare_cpp/include/template/result.hpp#L33")
-    click Status call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
-    click CANVersion call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
-    click Format call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
-    click BaudRate call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
-    click Mode call linkCallback("/home/effi/Projects/waveshare_cpp/include/enums/protocol.hpp")
+## Architecture Notes
+
+### State-First Design
+- Frame classes store state in CoreState, DataState, ConfigState structs
+- Serialization generates protocol buffers on-demand via impl_serialize()
+- No persistent buffer storage in frame objects
+
+### CRTP Pattern
+- CoreInterface, DataInterface, ConfigInterface use CRTP for compile-time polymorphism
+- derived() helper calls frame-specific impl_*() methods
+- Type-safe, zero-overhead abstraction
+
+### Dependency Injection
+- ISerialPort and ICANSocket interfaces enable testing without hardware
+- RealSerialPort and RealCANSocket for production use
+- Mock implementations available for unit tests
+
+### Thread Safety
+- USBAdapter: Three-mutex pattern (state_mutex_, write_mutex_, read_mutex_)
+- SocketCANBridge: Lock-free statistics with atomic operations
+- Independent thread paths prevent deadlocks
+
+### Exception Handling
+- Exception hierarchy based on std::runtime_error
+- Status enum provides error categorization
+- Context-rich error messages for debugging
 ```

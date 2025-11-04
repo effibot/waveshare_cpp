@@ -148,6 +148,78 @@ auto bridge = std::make_unique<SocketCANBridge>(
 
 **For detailed synchronization analysis**, see `doc/SYNCHRONIZATION.md`
 
+## Class Overview
+
+### Core Frame Classes
+
+**FixedFrame** - 20-byte CAN data frames with fixed structure  
+Implements standard and extended CAN messages with 8-byte data field (padded if needed). Uses checksum validation. Suitable for configurations requiring consistent frame size.
+
+**VariableFrame** - 5-15 byte CAN data frames with dynamic structure  
+Implements variable-length CAN messages without padding. Frame size adapts to actual data length (0-8 bytes). No checksum, uses END byte (0x55) for frame termination. Preferred for efficient bandwidth usage.
+
+**ConfigFrame** - 20-byte USB adapter configuration frames  
+Configures the Waveshare USB-CAN adapter parameters: baud rate, CAN mode, filters, masks, and auto-retransmission settings. Uses checksum validation. Always sent before data transmission.
+
+### Communication Adapters
+
+**USBAdapter** - Thread-safe USB-CAN device interface  
+Manages serial port communication with Waveshare USB-CAN hardware. Provides frame-level send/receive API with automatic serialization/deserialization. Uses three-mutex pattern for concurrent access. Supports both FixedFrame and VariableFrame protocols.
+
+**RealSerialPort** - POSIX serial port implementation  
+Low-level serial I/O with file locking (flock) for exclusive device access. Configures termios2 for custom baud rates. Implements ISerialPort interface for dependency injection.
+
+### SocketCAN Bridge
+
+**SocketCANBridge** - Bidirectional USB-CAN ↔ Linux SocketCAN bridge  
+Forwards CAN frames between Waveshare USB adapter and Linux SocketCAN interface. Runs two independent threads for concurrent bidirectional forwarding. Provides lock-free statistics tracking and optional frame callbacks. Automatically converts between Waveshare protocol and standard Linux can_frame structure.
+
+**RealCANSocket** - Linux SocketCAN interface implementation  
+Raw CAN socket management with configurable read timeouts. Implements ICANSocket interface for dependency injection.
+
+**BridgeConfig** - Bridge configuration and environment management  
+Loads configuration from environment variables, .env files, or defaults. Validates all parameters before use. Supports multiple configuration sources with priority hierarchy.
+
+### Frame Construction
+
+**FrameBuilder** - Type-safe fluent API for frame construction  
+Provides compile-time validated builder pattern for constructing frames. Uses SFINAE to restrict methods based on frame type (e.g., with_baud_rate only for ConfigFrame). Validates required fields at build time.
+
+### Support Classes
+
+**SocketCANHelper** - Frame conversion utilities  
+Static methods for converting between VariableFrame and Linux can_frame structures. Handles ID format flags (standard/extended), remote frames, and data copying.
+
+**ChecksumHelper** - Checksum computation and validation  
+Static methods for computing and validating checksums in FixedFrame and ConfigFrame. Uses sum-of-bytes algorithm with LSB extraction.
+
+**VarTypeHelper** - Variable frame TYPE byte encoding/decoding  
+Static methods for encoding and decoding the TYPE byte in VariableFrame. Packs IsExtended, Format, and DLC into single byte following Waveshare protocol specification.
+
+### Exception Hierarchy
+
+**WaveshareException** - Base exception class  
+All library exceptions derive from this class. Contains Status enum for error categorization.
+
+**ProtocolException** - Protocol validation errors  
+Thrown for malformed frames, invalid checksums, bad field values.
+
+**DeviceException** - Device I/O errors  
+Thrown for serial port failures, device not found, device busy (DBUSY).
+
+**TimeoutException** - Timeout errors  
+Thrown when read operations exceed configured timeout.
+
+**CANException** - CAN protocol errors  
+Thrown for CAN-specific errors (future: SDO, PDO, NMT errors).
+
+### Testing Support
+
+**ISerialPort / ICANSocket** - Abstract I/O interfaces  
+Enable dependency injection for hardware-independent testing. Mock implementations available for unit tests (132 tests, 100% pass rate).
+
+For complete API documentation, see `doc/diagrams/class_diagram.md` for UML class diagram.
+
 ### Basic SocketCAN Bridge Setup
 
 The library provides a high-level SocketCAN bridge that connects Waveshare USB-CAN adapter to Linux SocketCAN interface:
@@ -352,31 +424,72 @@ The most important values are the following:
 
 # Frames Structure:
 
-- **Fixed Frames**: These frames have a fixed size of 20 bytes and are used both for set the configuration of the USB device and for sending/receiving CAN messages with up to 8 bytes of data. The structure of a fixed **data** frame is as follows:
-![](doc//diagrams/waveshare_fixed_data_packet.md)
+**Fixed Frames**: These frames have a fixed size of 20 bytes and are used both for set the configuration of the USB device and for sending/receiving CAN messages with up to 8 bytes of data. The structure of a fixed **data** frame is as follows:
 
+```mermaid
+packet-beta
+0: "S" %% Start Of Transmission [0xAA]
+1: "H" %% Header [0x55]
+2: "T" %% Type 
+3: "E" %% IsExtended
+4: "F" %% Format
+5-8: "ID" %% Identifier
+9: "DLC" %% Data Length Code
+10-17: "DATA" %% Data Bytes
+18: "R" %% Reserved
+19: "CHK" %% Checksum
+```
 
-- The structure of a fixed **config** frame is as follows:
-![](doc//diagrams/waveshare_config_packet.md)
+The structure of a fixed **config** frame is as follows:
+
+```mermaid
+packet-beta
+0: "S" %% Start Of Transmission [0xAA]
+1: "H" %% Header [0x55]
+2: "T" %% Type 
+3: "B" %% Baud Rate
+4: "E" %% IsExtended
+5-8: "FILTER" %% ID Filter
+9-12: "MASK" %% ID Mask
+13: "M" %% Operating Mode
+14: "RTX" %% Retransmission
+15-18: "Reserved" %% Reserved
+19: "CHK" %% Checksum
+```
 
 > For both types of fixed frames, the checksum is calculated as the sum of all bytes from `TYPE` to the last `RESERVED` byte, taking only the least significant byte of the result.
 
 
-- **Variable Frames**: These frames have a variable size and are used for sending/receiving CAN messages without the need to pad the data to 8 bytes. 
+**Variable Frames**: These frames have a variable size and are used for sending/receiving CAN messages without the need to pad the data to 8 bytes. 
     - The `ID` field can be either of 2 or 4 bytes, depending on the value of bit 5 of the `TYPE` field. 
     - The `DATA` field can be from 0 to 8 bytes, depending on the value of bits 3-0 of the `TYPE` field. The `END` field is always `0x55`. 
 
-    The structure of the frame is as follows:
-![](doc/diagrams/waveshare_variable_data_packet.md)
+The structure of the frame is as follows:
 
-    In this case, the `TYPE` field is **not** defined as a constant but as a byte with the following bit structure (**This field should be read from right to left**):
-![](doc/diagrams/waveshare_variable_frame_type.md)
+```mermaid
+packet-beta
+0: "S" %% Start Of Transmission [0xAA]
+1: "T" %% Type 
+2-5: "ID" %% Identifier
+6-13: "DATA" %% Data Bytes (0-8 bytes)
+14: "END" %% End Of Transmission [0x55]
+```
 
-    Where `Type` is a constant value of `0xC0` (binary `11000000`), the `IsExtended` bit indicates if the ID is 11 or 29 bits long, the `Format` bit indicates if the frame is a data or remote frame, and the `DLC` (Data Length Code) indicates the number of data bytes in the frame (from 0 to 8).
+In this case, the `TYPE` field is **not** defined as a constant but as a byte with the following bit structure (**This field should be read from right to left**):
 
-    > Using a `uint8_t` to represent the `Type` byte allows to easily extract the individual fields using bitwise operations.
+```mermaid
+packet-beta
+0-3: "DLC" %% Data Length Code (0-8 bytes)
+4: "F" %% Format
+5: "E" %% IsExtended
+6-7: "Type" %% Type constant (always 0xC0)
+```
 
-    For example, starting with `0xC0` to sets the two most significant bits to `11`, one can do the following:
+Where `Type` is a constant value of `0xC0` (binary `11000000`), the `IsExtended` bit indicates if the ID is 11 or 29 bits long, the `Format` bit indicates if the frame is a data or remote frame, and the `DLC` (Data Length Code) indicates the number of data bytes in the frame (from 0 to 8).
+
+> Using a `uint8_t` to represent the `Type` byte allows to easily extract the individual fields using bitwise operations.
+
+For example, starting with `0xC0` to sets the two most significant bits to `11`, one can do the following:
 ```cpp
 uint8_t type = 0xC0 | (frame_type << 5) | (frame_format << 4) | (dlc & 0x0F);
 ```
@@ -394,15 +507,17 @@ The DLC (Data Length Code) field indicates the number of data bytes in the CAN m
 - For fixed frames, the `DATA` field is statically allocated to 8 bytes, so if the DLC is less than 8, the remaining bytes should be padded with zeros. This means that the `DLC` defines how many bytes of the `DATA` field are actually used, while the size of the `DATA` field itself is always 8 bytes.
 - For variable frames, the `DATA` field is the one that defines the size of the frame itself, so it's the length of the `DATA` field which defines the DLC.
 
-> This is practically relevant only when you are sending and receiving CAN messages with the USB-CAN-A adapter. When sending a CAN message, another node of the CAN newtork will only see the effective CAN message, not the packet that is used in this library. When receiving a CAN message, the library will parse the serial data and build the appropriate frame structure, so the user will only see the effective CAN message.
+> This is practically relevant only when you are sending and receiving CAN messages with the USB-CAN-A adapter. When sending a CAN message, another node of the CAN newtork will only see the effective CAN message, not the packet that is used in this library. 
+> When receiving a CAN message, the library will parse the serial data and build the appropriate frame structure, so the user will only see the effective CAN message.
 
 ## Note on Filtering and Masking
 
 When configuring the acceptance filter and mask, it's important to understand how they work together to determine which CAN messages are accepted by the USB-CAN-A device. 
 > It's not necessary to set a filter and/or a mask, but if you do, the following rules apply:
-    - The sender's frame ID should match the receiver's filter ID.
-    - Both filter and mask are hexadecimal values.
-    - The lower 11 bits of filter ID and mask ID are valid in a standard frame (range: `0x00000000~0x000007ff`), and the lower 29 bits of filter ID and mask ID in the extended frame are valid (range `0x00000000~0x1fffffff`).
+> 
+>    - The sender's frame ID should match the receiver's filter ID.
+>    - Both filter and mask are hexadecimal values.
+>    - The lower 11 bits of filter ID and mask ID are valid in a standard frame (range: `0x00000000~0x000007ff`), and the lower 29 bits of filter ID and mask ID in the extended frame are valid (range `0x00000000~0x1fffffff`).
 
 
 ### Bibliography
@@ -416,10 +531,6 @@ When configuring the acceptance filter and mask, it's important to understand ho
 ### Future Enhancements
 
 Potential optimizations and features for future consideration:
-1. **Zero-copy I/O**: Use `recvmsg()` with `MSG_PEEK` for socket reads
-2. **Batched Operations**: Accumulate multiple frames before socket writes
-3. **Lock-free Queues**: Replace threads with SPSC ring buffers for lower latency
-4. **Hardware Timestamping**: Use `SO_TIMESTAMP` socket option for precise timing
-5. **Memory Pooling**: Pre-allocate VariableFrame objects to reduce allocations
+1. **Memory Pooling**: Pre-allocate VariableFrame objects to reduce allocations
 
 ---
