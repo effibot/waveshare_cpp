@@ -15,10 +15,13 @@ using namespace waveshare;
 int main(int argc, char* argv[]) {
     try {
         // Parse command-line arguments
-        ScriptConfig config = parse_arguments(argc, argv, true);
+        ScriptConfig config = parse_arguments(argc, argv, ScriptType::READER);
 
-        // Initialize and configure adapter
-        auto adapter = initialize_adapter(config);
+        // Initialize and configure adapter with RTX OFF for receiving
+        auto adapter = initialize_adapter(config, RTX::OFF);
+
+        std::cout << "\n=== CAN Frame Reader ===\n";
+        std::cout << "Waiting for CAN frames (Ctrl+C to stop)...\n\n";
 
         // Read frames in a loop
         while (!USBAdapter::should_stop()) {
@@ -34,7 +37,8 @@ int main(int argc, char* argv[]) {
                 }
 
                 // Process the received frame
-                std::cout << "Received <<\t" << frame_string << "\n";
+                std::cout << "[" << get_timestamp() << "] Received << " << frame_string << "\n";
+                std::cout.flush();
             } catch (const TimeoutException&) {
                 // Timeout, no frame received - this is expected, just continue
                 continue;
@@ -44,6 +48,8 @@ int main(int argc, char* argv[]) {
                 break;
             }
         }
+
+        std::cout << "\n[READER] Stopped.\n";
 
         // Cleanup (automatic with unique_ptr)
         return 0;

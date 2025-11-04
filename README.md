@@ -26,11 +26,13 @@ The steps to run the examples are:
     ```bash
     mkdir build
     cmake --build ./build --config Debug --target clean
-    cmake --build ./build --config Debug --target all
+    cmake --build ./build --config Debug --target all -j $(nproc)
     ```
 4. Run the example programs, in three different terminals:
     ```bash
-    ./build/scripts/wave_bridge
+    ./build/scripts/wave_bridge -d /dev/ttyUSB0 -i vcan0 -b 2000000 -c 1000000
+    ```
+    ```bash
     ./build/scripts/wave_reader
     ./build/scripts/wave_writer
     ```

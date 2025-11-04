@@ -99,7 +99,8 @@
     "scoped_allocator": "cpp",
     "stack": "cpp",
     "stacktrace": "cpp",
-    "syncstream": "cpp"
+    "syncstream": "cpp",
+    "*.def": "cpp"
   },
   "cmake.sourceDirectory": "${workspaceFolder}",
   "editor.formatOnSave": true,
@@ -125,5 +126,11 @@
   ],
   "cmake.coverageInfoFiles": [
     "${workspaceFolder}/coverage.info"
+  ],
+  "python.autoComplete.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages"
+  ],
+  "python.analysis.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages"
   ]
 }
