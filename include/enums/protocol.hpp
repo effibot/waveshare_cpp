@@ -197,8 +197,8 @@ namespace waveshare {
      * - OFF: Single-shot mode with automatic retransmission disabled.
      */
     enum class RTX : std::uint8_t {
-        AUTO = 0x00, // <<< Recommended
-        OFF = 0x01
+        AUTO = 0x00, // <<< Recommended (0x00 enables auto-retransmit)
+        OFF = 0x01   // 0x01 disables auto-retransmit
     };
     // * Define default RTX mode
     static constexpr RTX DEFAULT_RTX = RTX::AUTO;

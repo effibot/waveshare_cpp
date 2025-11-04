@@ -13,30 +13,6 @@ using namespace waveshare;
 // Global bridge pointer for signal handler
 SocketCANBridge* g_bridge = nullptr;
 
-// Helper function to format CAN frame as hex string
-std::string format_can_data(const uint8_t* data, uint8_t len) {
-    std::ostringstream oss;
-    oss << std::hex << std::uppercase << std::setfill('0');
-    for (uint8_t i = 0; i < len; ++i) {
-        oss << std::setw(2) << static_cast<int>(data[i]);
-        if (i < len - 1) oss << " ";
-    }
-    return oss.str();
-}
-
-// Helper function to get current timestamp string
-std::string get_timestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    auto timer = std::chrono::system_clock::to_time_t(now);
-    std::tm bt = *std::localtime(&timer);
-
-    std::ostringstream oss;
-    oss << std::put_time(&bt, "%H:%M:%S");
-    oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    return oss.str();
-}
-
 // Signal handler for graceful shutdown
 void signal_handler(int signal) {
     if (signal == SIGINT) {
@@ -49,97 +25,101 @@ void signal_handler(int signal) {
     }
 }
 
-void display_help(const std::string& program_name) {
-    std::cout << "Usage: " << program_name << " [OPTIONS]\n\n";
-    std::cout << "Options:\n";
-    std::cout << "  -i <interface> SocketCAN interface (default: vcan0)\n";
-    std::cout << "  -d <device>    USB device path (default: /dev/ttyUSB0)\n";
-    std::cout << "  -s <baudrate>  Serial baudrate (default: 2000000)\n";
-    std::cout << "                 Supported: 9600, 19200, 38400, 57600, 115200, 153600, 2000000\n";
-    std::cout << "  -c <baudrate>  CAN bus baudrate (default: 1000000)\n";
-    std::cout << "                 Supported: 10000, 20000, 50000, 100000, 125000, 200000,\n";
-    std::cout << "                            250000, 400000, 500000, 800000, 1000000\n";
-    std::cout << "  -h             Display this help message\n";
-    std::cout << "\n";
-    std::cout << "Example:\n";
-    std::cout << "  " << program_name << " -i vcan0 -d /dev/ttyUSB0 -s 2000000 -c 1000000\n";
-    std::cout << "\n";
+// === Callback Functions ===
+
+/**
+ * @brief Callback for USB to SocketCAN frame forwarding
+ * @param usb_frame The Waveshare frame received from USB
+ * @param socketcan_frame The SocketCAN frame to be sent
+ */
+void usb_to_socketcan_callback(const VariableFrame& usb_frame, const ::can_frame& socketcan_frame) {
+    std::cout << "[" << get_timestamp() << "] USB→CAN: "
+              << "ID=0x" << std::hex << std::uppercase << std::setfill('0')
+              << std::setw(usb_frame.is_extended() ? 8 : 3) << usb_frame.get_can_id()
+              << std::dec << " DLC=" << static_cast<int>(usb_frame.get_dlc())
+              << " DATA=[" << format_can_data(usb_frame.get_data().data(),
+        usb_frame.get_dlc()) << "]"
+              << " → CAN ID=0x" << std::hex << std::uppercase
+              << std::setw((socketcan_frame.can_id & CAN_EFF_FLAG) ? 8 : 3)
+              << (socketcan_frame.can_id & CAN_EFF_MASK)
+              << std::dec << " DLC=" << static_cast<int>(socketcan_frame.can_dlc)
+              << std::endl;
 }
+
+/**
+ * @brief Callback for SocketCAN to USB frame forwarding
+ * @param socketcan_frame The SocketCAN frame received
+ * @param usb_frame The Waveshare frame to be sent to USB
+ */
+void socketcan_to_usb_callback(const ::can_frame& socketcan_frame, const VariableFrame& usb_frame) {
+    std::cout << "[" << get_timestamp() << "] CAN→USB: "
+              << "ID=0x" << std::hex << std::uppercase << std::setfill('0')
+              << std::setw((socketcan_frame.can_id & CAN_EFF_FLAG) ? 8 : 3)
+              << (socketcan_frame.can_id & CAN_EFF_MASK)
+              << std::dec << " DLC=" << static_cast<int>(socketcan_frame.can_dlc)
+              << " DATA=[" << format_can_data(socketcan_frame.data, socketcan_frame.can_dlc) << "]"
+              << " → USB ID=0x" << std::hex << std::uppercase
+              << std::setw(usb_frame.is_extended() ? 8 : 3) << usb_frame.get_can_id()
+              << std::dec << " DLC=" << static_cast<int>(usb_frame.get_dlc())
+              << std::endl;
+}
+
+// === Main Program ===
+
+// === Main Program ===
 
 int main(int argc, char* argv[]) {
     std::cout << "=== SocketCAN Bridge Manual Test ===\n\n";
 
     try {
-        // Default configuration
-        std::string socketcan_interface = "vcan0";
-        ScriptConfig script_config;
-        script_config.device = "/dev/ttyUSB0";
-        script_config.serial_baudrate = SerialBaud::BAUD_2M;
-        script_config.can_baudrate = CANBaud::BAUD_1M;
-        script_config.use_fixed_frames = false;
-
-        // Parse command-line arguments
-        for (int i = 1; i < argc; i++) {
-            std::string arg = argv[i];
-
-            if (arg == "-h") {
-                display_help(argv[0]);
-                return 0;
-            } else if (arg == "-i" && i + 1 < argc) {
-                socketcan_interface = argv[++i];
-            } else if (arg == "-d" && i + 1 < argc) {
-                script_config.device = argv[++i];
-            } else if (arg == "-s" && i + 1 < argc) {
-                int serial_baudrate = std::stoi(argv[++i]);
-                bool baud_not_found = false;
-                script_config.serial_baudrate = serialbaud_from_int(serial_baudrate,
-                    baud_not_found);
-                if (baud_not_found) {
-                    throw std::invalid_argument("Unsupported serial baudrate: " +
-                        std::to_string(serial_baudrate));
-                }
-            } else if (arg == "-c" && i + 1 < argc) {
-                int can_baudrate = std::stoi(argv[++i]);
-                bool baud_not_found = false;
-                script_config.can_baudrate = canbaud_from_int(can_baudrate, baud_not_found);
-                if (baud_not_found) {
-                    throw std::invalid_argument("Unsupported CAN baudrate: " +
-                        std::to_string(can_baudrate));
-                }
-            } else {
-                std::cerr << "Unknown argument: " << arg << "\n";
-                display_help(argv[0]);
-                return 1;
-            }
-        }
+        // Parse command-line arguments using standardized parser
+        ScriptConfig config = parse_arguments(argc, argv, ScriptType::BRIDGE);
 
         std::cout << "Configuration:\n";
-        std::cout << "  SocketCAN Interface: " << socketcan_interface << "\n";
-        std::cout << "  USB Device:          " << script_config.device << "\n";
-        std::cout << "  Serial Baud:         " << static_cast<int>(script_config.serial_baudrate) <<
+        std::cout << "  SocketCAN Interface: " << config.socketcan_interface << "\n";
+        std::cout << "  USB Device:          " << config.device << "\n";
+        std::cout << "  Serial Baud:         " << static_cast<int>(config.serial_baudrate) <<
             " bps\n";
-        std::cout << "  CAN Baud:            " << static_cast<int>(script_config.can_baudrate) <<
-            " bps\n";
-        std::cout << "  CAN Mode:            NORMAL\n\n";
+        std::cout << "  CAN Baud:            " << static_cast<int>(config.can_baudrate) << " bps\n";
 
-        // Create bridge configuration
-        BridgeConfig config = BridgeConfig::create_default();
-        config.socketcan_interface = socketcan_interface;
-        config.usb_device_path = script_config.device;
-        config.serial_baud_rate = script_config.serial_baudrate;
-        config.can_baud_rate = script_config.can_baudrate;
-        config.can_mode = CANMode::NORMAL;
-        config.auto_retransmit = true;
-        config.usb_read_timeout_ms = 100;
-        config.socketcan_read_timeout_ms = 100;
+        // Display CAN mode
+        std::cout << "  CAN Mode:            ";
+        switch (config.can_mode) {
+        case CANMode::NORMAL:          std::cout << "NORMAL\n"; break;
+        case CANMode::LOOPBACK:        std::cout << "LOOPBACK\n"; break;
+        case CANMode::SILENT:          std::cout << "SILENT\n"; break;
+        case CANMode::LOOPBACK_SILENT: std::cout << "LOOPBACK_SILENT\n"; break;
+        default:                       std::cout << "UNKNOWN\n"; break;
+        }
+
+        std::cout << "  Auto-Retransmit:     " << (config.auto_retransmit ? "ON" : "OFF") << "\n";
+        std::cout << "  Filter ID:           0x" << std::hex << std::uppercase << std::setfill('0')
+                  << std::setw(8) << config.filter_id << std::dec << "\n";
+        std::cout << "  Filter Mask:         0x" << std::hex << std::uppercase << std::setfill('0')
+                  << std::setw(8) << config.filter_mask << std::dec << "\n";
+        std::cout << "  USB Read Timeout:    " << config.usb_read_timeout_ms << " ms\n";
+        std::cout << "  SocketCAN Timeout:   " << config.socketcan_read_timeout_ms << " ms\n\n";
+
+        // Create bridge configuration from parsed arguments
+        BridgeConfig bridge_config = BridgeConfig::create_default();
+        bridge_config.socketcan_interface = config.socketcan_interface;
+        bridge_config.usb_device_path = config.device;
+        bridge_config.serial_baud_rate = config.serial_baudrate;
+        bridge_config.can_baud_rate = config.can_baudrate;
+        bridge_config.can_mode = config.can_mode;
+        bridge_config.auto_retransmit = config.auto_retransmit;
+        bridge_config.filter_id = config.filter_id;
+        bridge_config.filter_mask = config.filter_mask;
+        bridge_config.usb_read_timeout_ms = config.usb_read_timeout_ms;
+        bridge_config.socketcan_read_timeout_ms = config.socketcan_read_timeout_ms;
 
         // Validate configuration
-        config.validate();
+        bridge_config.validate();
         std::cout << "[CONFIG] Configuration validated successfully.\n\n";
 
         // Create bridge using factory method
         std::cout << "[BRIDGE] Creating SocketCAN bridge...\n";
-        auto bridge_ptr = SocketCANBridge::create(config);
+        auto bridge_ptr = SocketCANBridge::create(bridge_config);
         SocketCANBridge& bridge = *bridge_ptr;
         g_bridge = bridge_ptr.get();
 
@@ -154,41 +134,10 @@ int main(int argc, char* argv[]) {
         std::signal(SIGINT, signal_handler);
         std::cout << "[BRIDGE] Signal handler installed (Ctrl+C to stop)\n\n";
 
-        // Set up frame dump callbacks
+        // Set up frame dump callbacks using external functions
         std::cout << "[BRIDGE] Installing frame dump callbacks...\n";
-
-        bridge.set_usb_to_socketcan_callback(
-            [](const VariableFrame& usb_frame, const ::can_frame& socketcan_frame) {
-                std::cout << "[" << get_timestamp() << "] USB→CAN: "
-                          << "ID=0x" << std::hex << std::uppercase << std::setfill('0')
-                          << std::setw(usb_frame.is_extended() ? 8 : 3) << usb_frame.get_can_id()
-                          << std::dec << " DLC=" << static_cast<int>(usb_frame.get_dlc())
-                          << " DATA=[" << format_can_data(usb_frame.get_data().data(),
-                usb_frame.get_dlc()) << "]"
-                          << " → CAN ID=0x" << std::hex << std::uppercase
-                          << std::setw((socketcan_frame.can_id & CAN_EFF_FLAG) ? 8 : 3)
-                          << (socketcan_frame.can_id & CAN_EFF_MASK)
-                          << std::dec << " DLC=" << static_cast<int>(socketcan_frame.can_dlc)
-                          << std::endl;
-            }
-        );
-
-        bridge.set_socketcan_to_usb_callback(
-            [](const ::can_frame& socketcan_frame, const VariableFrame& usb_frame) {
-                std::cout << "[" << get_timestamp() << "] CAN→USB: "
-                          << "ID=0x" << std::hex << std::uppercase << std::setfill('0')
-                          << std::setw((socketcan_frame.can_id & CAN_EFF_FLAG) ? 8 : 3)
-                          << (socketcan_frame.can_id & CAN_EFF_MASK)
-                          << std::dec << " DLC=" << static_cast<int>(socketcan_frame.can_dlc)
-                          << " DATA=[" << format_can_data(socketcan_frame.data,
-                socketcan_frame.can_dlc) << "]"
-                          << " → USB ID=0x" << std::hex << std::uppercase
-                          << std::setw(usb_frame.is_extended() ? 8 : 3) << usb_frame.get_can_id()
-                          << std::dec << " DLC=" << static_cast<int>(usb_frame.get_dlc())
-                          << std::endl;
-            }
-        );
-
+        bridge.set_usb_to_socketcan_callback(usb_to_socketcan_callback);
+        bridge.set_socketcan_to_usb_callback(socketcan_to_usb_callback);
         std::cout << "[BRIDGE] Frame dump callbacks installed.\n\n";
 
         // Start bridge
@@ -202,9 +151,9 @@ int main(int argc, char* argv[]) {
         std::cout << "Frame dumps will appear in real-time below.\n\n";
         std::cout << "Test commands (run in another terminal):\n";
         std::cout << "  # Send frame to SocketCAN (will be forwarded to USB):\n";
-        std::cout << "  cansend " << socketcan_interface << " 123#DEADBEEF\n\n";
+        std::cout << "  cansend " << config.socketcan_interface << " 123#DEADBEEF\n\n";
         std::cout << "  # Monitor SocketCAN frames (will show frames from USB):\n";
-        std::cout << "  candump " << socketcan_interface << "\n\n";
+        std::cout << "  candump " << config.socketcan_interface << "\n\n";
         std::cout << "Press Ctrl+C to stop and show statistics.\n";
         std::cout << "========================================\n\n";
 

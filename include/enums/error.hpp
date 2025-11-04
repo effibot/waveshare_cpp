@@ -48,13 +48,14 @@ namespace waveshare {
         DNOT_FOUND = 19, /**< Device not found */
         DNOT_OPEN = 20, /**< Device not open */
         DALREADY_OPEN = 21, /**< Device already open */
-        DREAD_ERROR = 22, /**< Device read error */
-        DWRITE_ERROR = 23, /**< Device write error */
-        DCONFIG_ERROR = 24, /**< Device configuration error */
-        CAN_SDO_TIMEOUT = 25, /**< CAN SDO timeout */
-        CAN_SDO_ABORT = 26, /**< CAN SDO abort */
-        CAN_PDO_ERROR = 27, /**< CAN PDO error */
-        CAN_NMT_ERROR = 28, /**< CAN NMT error */
+        DBUSY = 22, /**< Device busy (locked by another process) */
+        DREAD_ERROR = 23, /**< Device read error */
+        DWRITE_ERROR = 24, /**< Device write error */
+        DCONFIG_ERROR = 25, /**< Device configuration error */
+        CAN_SDO_TIMEOUT = 26, /**< CAN SDO timeout */
+        CAN_SDO_ABORT = 27, /**< CAN SDO abort */
+        CAN_PDO_ERROR = 28, /**< CAN PDO error */
+        CAN_NMT_ERROR = 29, /**< CAN NMT error */
         UNKNOWN = 255   /**< Unknown error */
     };
 
@@ -112,6 +113,8 @@ namespace waveshare {
                     return "Device not open";
                 case Status::DALREADY_OPEN:
                     return "Device already open";
+                case Status::DBUSY:
+                    return "Device busy (locked by another process)";
                 case Status::DREAD_ERROR:
                     return "Device read error";
                 case Status::DWRITE_ERROR:
@@ -149,7 +152,7 @@ namespace waveshare {
 
 // Register the enum for use with std::error_code
 namespace std {
-    template<> struct is_error_code_enum<waveshare::Status> : true_type {};
+    template<> struct is_error_code_enum<waveshare::Status>: true_type {};
 }; // namespace std
 
 /**
