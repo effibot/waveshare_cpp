@@ -129,17 +129,76 @@ namespace waveshare {
     };
 
     /**
-     * @brief SocketCAN bridge for Waveshare USB-CAN adapter
+     * @brief Lock-free bidirectional bridge between Waveshare USB-CAN and Linux SocketCAN
      *
-     * Architecture:
+     * Provides real-time frame forwarding between Waveshare USB-CAN adapters and
+     * Linux SocketCAN interfaces with protocol conversion and performance monitoring.
      *
-     * - Manages SocketCAN socket lifecycle
+     * ## Architecture
      *
-     * - Integrates USBAdapter for serial communication
+     * The bridge operates with **two independent forwarding threads**:
+     * - **USB → SocketCAN**: Reads Waveshare frames, converts to can_frame, writes to SocketCAN
+     * - **SocketCAN → USB**: Reads can_frame, converts to Waveshare frames, writes to USB
      *
-     * - Bidirectional frame forwarding (future phases)
+     * @code{.cpp}
+     * ┌──────────────────────────────────────────────────┐
+     * │          SocketCANBridge                         │
+     * │                                                  │
+     * │  Thread 1: USB → CAN     Thread 2: CAN → USB    │
+     * │  ┌──────────────────┐    ┌──────────────────┐  │
+     * │  │ USB Adapter RX   │    │ SocketCAN RX     │  │
+     * │  │ Frame Conversion │    │ Frame Conversion │  │
+     * │  │ SocketCAN TX     │    │ USB Adapter TX   │  │
+     * │  └──────────────────┘    └──────────────────┘  │
+     * │                                                  │
+     * │  BridgeStatistics (lock-free atomic counters)   │
+     * └──────────────────────────────────────────────────┘
+     * @endcode
      *
-     * - Thread-safe operation with proper cleanup
+     * ## Thread Safety
+     *
+     * Uses **lock-free synchronization** for maximum performance:
+     * - **running_** (atomic<bool>): Controls thread lifecycle
+     * - **All statistics** (atomic<uint64_t>): Lock-free performance counters
+     * - **callback_mutex_**: Only protects callback registration (not invocation)
+     *
+     * ### Deadlock Prevention
+     * No deadlocks possible due to:
+     * 1. **Independent threads**: No inter-thread waiting or synchronization
+     * 2. **Lock-free statistics**: No contention on performance counters
+     * 3. **Timeout-based I/O**: All blocking operations have configurable timeouts
+     * 4. **Unidirectional flow**: Each thread owns one data flow direction
+     *
+     * ### Memory Ordering
+     * - Statistics use `std::memory_order_relaxed` for performance
+     * - Control flags use sequential consistency for correctness
+     *
+     * ## Dependency Injection
+     *
+     * Supports testing without hardware:
+     * @code{.cpp}
+     * // Production: Real hardware
+     * auto bridge = SocketCANBridge::create(config);
+     *
+     * // Testing: Mock hardware
+     * auto mock_socket = std::make_unique<MockCANSocket>();
+     * auto mock_adapter = std::make_unique<USBAdapter>(...);
+     * auto bridge = std::make_unique<SocketCANBridge>(
+     *     config, std::move(mock_socket), std::move(mock_adapter)
+     * );
+     * @endcode
+     *
+     * ## Features
+     * - Bidirectional frame conversion (Waveshare VariableFrame ↔ can_frame)
+     * - Dual-threaded concurrent forwarding
+     * - Lock-free performance statistics
+     * - Configurable timeouts, filters, and error handling
+     * - Optional frame-level callbacks for monitoring
+     * - Clean lifecycle management (start/stop/destructor)
+     *
+     * @see doc/SYNCHRONIZATION.md for detailed threading analysis
+     * @see BridgeConfig for configuration options
+     * @note All public methods are thread-safe
      */
     class SocketCANBridge {
         public:

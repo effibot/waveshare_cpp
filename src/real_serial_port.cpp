@@ -7,6 +7,7 @@
 
 #include "../include/io/real_serial_port.hpp"
 #include <cstdio>
+#include <sys/file.h>
 
 namespace waveshare {
 
@@ -22,6 +23,8 @@ namespace waveshare {
 
     RealSerialPort::~RealSerialPort() {
         if (is_open_ && fd_ >= 0) {
+            // Release the exclusive lock before closing
+            flock(fd_, LOCK_UN);
             ::close(fd_);
             fd_ = -1;
             is_open_ = false;
@@ -64,6 +67,8 @@ namespace waveshare {
 
     void RealSerialPort::close() {
         if (is_open_ && fd_ >= 0) {
+            // Release the exclusive lock before closing
+            flock(fd_, LOCK_UN);
             ::close(fd_);
             fd_ = -1;
             is_open_ = false;
@@ -81,6 +86,21 @@ namespace waveshare {
             throw DeviceException(Status::DNOT_FOUND,
                 "RealSerialPort::open_port: " + std::string(std::strerror(errno)));
         }
+
+        // Acquire exclusive lock to prevent other processes from using the device
+        if (flock(fd_, LOCK_EX | LOCK_NB) < 0) {
+            int lock_errno = errno;
+            ::close(fd_);
+            fd_ = -1;
+            if (lock_errno == EWOULDBLOCK || lock_errno == EAGAIN) {
+                throw DeviceException(Status::DBUSY,
+                    "RealSerialPort::open_port: device locked by another process");
+            }
+            throw DeviceException(Status::DCONFIG_ERROR,
+                "RealSerialPort::open_port: flock failed: " +
+                std::string(std::strerror(lock_errno)));
+        }
+
         is_open_ = true;
         std::fprintf(stdout, "Serial port %s opened successfully.\n", device_path_.c_str());
     }

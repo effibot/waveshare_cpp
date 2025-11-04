@@ -47,6 +47,107 @@ The steps to run the examples are:
 
 > You should see the messages sent by `wave_writer` being received by `wave_reader` through the `wave_bridge`, which forwards messages between the virtual CAN interface and the USB-CAN-A device. The output from the bridge, will show how many messages were forwarded in each direction and what is the content of the messages.
 
+## Architecture Overview
+
+### Serial Port Exclusivity & Automatic Fallback
+
+**Linux TTY devices support only one process at a time.** When `USBAdapter` opens `/dev/ttyUSB0`, no other process can access it until closed. This is enforced by the kernel's serial driver.
+
+**Automatic Transport Detection**:
+- `wave_writer` **automatically detects** if the USB device is locked (bridge running)
+- Falls back to **SocketCAN mode** seamlessly
+- No manual configuration required - just specify `-c vcan0` for the fallback interface
+
+**Usage Patterns**:
+
+```bash
+# Pattern 1: Direct USB access (no bridge running)
+./build/scripts/wave_writer -d /dev/ttyUSB0 -i 0x123
+# Output: "Transport: USB Direct"
+
+# Pattern 2: Bridge + Writer (automatic SocketCAN fallback)
+# Terminal 1: Start bridge
+./build/scripts/wave_bridge -d /dev/ttyUSB0 -i vcan0
+
+# Terminal 2: Writer detects busy USB and uses SocketCAN automatically
+./build/scripts/wave_writer -d /dev/ttyUSB0 -c vcan0 -i 0x123
+# Output: "Device is locked (bridge may be running)"
+#         "Falling back to SocketCAN mode"
+#         "Transport: SocketCAN"
+
+# Pattern 3: Manual SocketCAN (can-utils)
+cansend vcan0 123#DEADBEEF
+candump vcan0
+```
+
+**Design Pattern Benefits**:
+- ✅ **No conflicts**: Writer detects busy device and adapts
+- ✅ **Seamless**: Same command works with or without bridge
+- ✅ **Flexible**: Bridge acts as single point of USB management
+- ✅ **Standard**: Uses Linux SocketCAN when bridge is active
+
+**Multi-Adapter Scenarios**: Multiple USB-CAN adapters can run simultaneously:
+```bash
+# Bridge 1: USB0 → vcan0
+./build/scripts/wave_bridge -d /dev/ttyUSB0 -i vcan0
+
+# Bridge 2: USB1 → vcan1  
+./build/scripts/wave_bridge -d /dev/ttyUSB1 -i vcan1
+
+# Writers auto-detect and use appropriate SocketCAN
+./build/scripts/wave_writer -d /dev/ttyUSB0 -c vcan0 -i 0x100
+./build/scripts/wave_writer -d /dev/ttyUSB1 -c vcan1 -i 0x200
+```
+
+### Thread-Safe Design
+
+The library is designed for safe concurrent access with minimal performance overhead:
+
+**USBAdapter** - Three-Mutex Pattern:
+- `state_mutex_` (shared): Protects configuration state
+- `write_mutex_` (exclusive): Serializes write operations
+- `read_mutex_` (exclusive): Serializes read operations
+
+```
+Read/write operations can proceed concurrently
+State checks use shared_lock (multiple threads can check simultaneously)
+Hierarchical locking prevents deadlocks (state check → release → I/O lock)
+```
+
+**SocketCANBridge** - Lock-Free Design:
+- Two independent forwarding threads (USB→CAN and CAN→USB)
+- Lock-free statistics using `std::atomic<uint64_t>` with relaxed ordering
+- Timeout-based I/O prevents indefinite blocking
+- No inter-thread synchronization or waiting
+
+```
+Thread 1: USB RX → SocketCAN TX (owns USB read path, CAN write path)
+Thread 2: CAN RX → USB TX (owns CAN read path, USB write path)
+No shared resources between threads → No deadlocks possible
+```
+
+### Dependency Injection for Testing
+
+Both `USBAdapter` and `SocketCANBridge` support dependency injection:
+
+```cpp
+// Production: Real hardware
+auto adapter = USBAdapter::create("/dev/ttyUSB0", SerialBaud::BAUD_2M);
+auto bridge = SocketCANBridge::create(config);
+
+// Testing: Mock hardware (132 tests, 100% passing, no hardware required)
+auto mock_port = std::make_unique<MockSerialPort>();
+auto adapter = std::make_unique<USBAdapter>(std::move(mock_port), ...);
+
+auto mock_socket = std::make_unique<MockCANSocket>();
+auto mock_adapter = std::make_unique<USBAdapter>(...);
+auto bridge = std::make_unique<SocketCANBridge>(
+    config, std::move(mock_socket), std::move(mock_adapter)
+);
+```
+
+**For detailed synchronization analysis**, see `doc/SYNCHRONIZATION.md`
+
 ### Basic SocketCAN Bridge Setup
 
 The library provides a high-level SocketCAN bridge that connects Waveshare USB-CAN adapter to Linux SocketCAN interface:

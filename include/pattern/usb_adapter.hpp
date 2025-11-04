@@ -35,14 +35,50 @@
 namespace waveshare {
 
     /**
-     * @brief USB-CAN Adapter interface
+     * @brief Thread-safe USB-CAN adapter interface with dependency injection
      *
-     * This class provides methods to interact with the Waveshare USB-CAN adapter.
-     * It abstracts low-level USB communication and provides high-level methods
-     * for sending and receiving CAN frames.
+     * Provides high-level frame I/O operations for Waveshare USB-CAN adapters,
+     * abstracting serial communication and protocol handling.
      *
-     * @note This implementation uses dependency injection for serial I/O to enable
-     * testing with mocks. Production code uses RealSerialPort for hardware communication.
+     * ## Thread Safety
+     *
+     * USBAdapter implements a three-mutex synchronization pattern:
+     * - **state_mutex_** (shared_mutex): Protects configuration state (is_configured_)
+     *   - Multiple threads can check state concurrently (shared_lock)
+     *   - Configuration changes require exclusive access (unique_lock)
+     * - **write_mutex_** (mutex): Serializes write operations to prevent corruption
+     * - **read_mutex_** (mutex): Serializes read operations to prevent corruption
+     *
+     * ### Deadlock Prevention
+     * The design prevents deadlocks through:
+     * 1. **Hierarchical locking**: State check → Release → I/O lock
+     * 2. **No nested locks**: Mutexes are never held simultaneously
+     * 3. **Independent I/O**: Read/write operations can proceed concurrently
+     * 4. **Timeout-based blocking**: All read operations have configurable timeouts
+     *
+     * ## Dependency Injection
+     *
+     * The class accepts an ISerialPort interface, enabling:
+     * - **Production use**: Pass RealSerialPort for hardware communication
+     * - **Testing**: Pass MockSerialPort for hardware-independent tests
+     *
+     * @code{.cpp}
+     * // Production usage
+     * auto adapter = USBAdapter::create("/dev/ttyUSB0", SerialBaud::BAUD_2M);
+     * adapter->send_frame(frame);
+     *
+     * // Testing usage
+     * auto mock = std::make_unique<MockSerialPort>();
+     * auto adapter = std::make_unique<USBAdapter>(std::move(mock), ...);
+     * @endcode
+     *
+     * ## Lifecycle
+     * - Constructor: Opens and configures serial port automatically
+     * - Destructor: Closes port and cleans up resources
+     * - All frame operations require configured state (throws otherwise)
+     *
+     * @see doc/SYNCHRONIZATION.md for detailed threading analysis
+     * @note All public methods are thread-safe and can be called concurrently
      */
     class USBAdapter {
 

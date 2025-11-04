@@ -150,6 +150,8 @@ namespace waveshare {
                 "  -g <ms>         Gap/delay between messages in milliseconds (default: 200)\n";
             std::cout << "  -I              Increment CAN ID for each message sent\n";
             std::cout << "  -l              Loop mode: send messages infinitely (same as -n 0)\n";
+            std::cout << "  -c <interface>  SocketCAN interface fallback (default: vcan0)\n";
+            std::cout << "                  Used when USB device is busy (bridge running)\n";
         }
 
         if (script_type != ScriptType::BRIDGE) {
@@ -167,6 +169,10 @@ namespace waveshare {
         case ScriptType::WRITER:
             std::cout << "Sends CAN frames to the Waveshare USB-CAN adapter.\n";
             std::cout << "\n";
+            std::cout << "Transport Modes:\n";
+            std::cout << "  - USB Direct: Opens USB device directly (if available)\n";
+            std::cout << "  - SocketCAN: Falls back to SocketCAN if USB is busy (bridge running)\n";
+            std::cout << "\n";
             std::cout << "Examples:\n";
             std::cout << "  # Send 10 messages with ID 0x123 and default data:\n";
             std::cout << "  " << program_name << " -d /dev/ttyUSB0\n\n";
@@ -175,7 +181,9 @@ namespace waveshare {
             std::cout << "  # Send messages with incrementing ID:\n";
             std::cout << "  " << program_name << " -i 0x100 -I -n 20 -g 100\n\n";
             std::cout << "  # Infinite loop sending messages:\n";
-            std::cout << "  " << program_name << " -i 0x200 -j \"CAFEBABE\" -l -g 500\n";
+            std::cout << "  " << program_name << " -i 0x200 -j \"CAFEBABE\" -l -g 500\n\n";
+            std::cout << "  # Use SocketCAN fallback when bridge is running:\n";
+            std::cout << "  " << program_name << " -d /dev/ttyUSB0 -c vcan0 -i 0x123\n";
             break;
         case ScriptType::BRIDGE:
             std::cout << "Bridges Waveshare USB-CAN adapter with SocketCAN interface.\n";
@@ -318,7 +326,7 @@ namespace waveshare {
         if (script_type == ScriptType::BRIDGE) {
             optstring = "hi:d:s:b:m:r:F:M:u:t:";
         } else if (script_type == ScriptType::WRITER) {
-            optstring = "hd:s:b:f:i:j:n:g:Il";
+            optstring = "hd:s:b:f:i:j:n:g:Ilc:";
         } else { // READER
             optstring = "hd:s:b:f:";
         }
@@ -387,6 +395,12 @@ namespace waveshare {
             case 'I':  // Increment ID (writer only)
                 if (script_type == ScriptType::WRITER) {
                     config.increment_id = true;
+                }
+                break;
+
+            case 'c':  // SocketCAN interface (writer fallback)
+                if (script_type == ScriptType::WRITER) {
+                    config.socketcan_interface = optarg;
                 }
                 break;
 
