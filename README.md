@@ -42,7 +42,7 @@ The steps to run the examples are:
     ```
     And send messages to it:
     ```bash
-    cansend vcan0 123#AABBCCDD
+    cansend vcan0 "123#AABBCCDD"
     ```
 
 > You should see the messages sent by `wave_writer` being received by `wave_reader` through the `wave_bridge`, which forwards messages between the virtual CAN interface and the USB-CAN-A device. The output from the bridge, will show how many messages were forwarded in each direction and what is the content of the messages.
@@ -76,7 +76,7 @@ The steps to run the examples are:
 #         "Transport: SocketCAN"
 
 # Pattern 3: Manual SocketCAN (can-utils)
-cansend vcan0 123#DEADBEEF
+cansend vcan0 "123#DEADBEEF"
 candump vcan0
 ```
 
