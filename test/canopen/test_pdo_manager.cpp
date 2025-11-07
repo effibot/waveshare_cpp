@@ -20,13 +20,13 @@ using namespace test_utils;
 namespace {
     class MockCANSocket : public waveshare::ICANSocket {
         bool open_ = true;
-    public:
-        ssize_t send(const struct can_frame&) override { return sizeof(can_frame); }
-        ssize_t receive(struct can_frame&) override { return sizeof(can_frame); }
-        bool is_open() const override { return open_; }
-        void close() override { open_ = false; }
-        std::string get_interface_name() const override { return "mock0"; }
-        int get_fd() const override { return 99; }
+        public:
+            ssize_t send(const struct can_frame&) override { return sizeof(can_frame); }
+            ssize_t receive(struct can_frame&) override { return sizeof(can_frame); }
+            bool is_open() const override { return open_; }
+            void close() override { open_ = false; }
+            std::string get_interface_name() const override { return "mock0"; }
+            int get_fd() const override { return 99; }
     };
 }
 

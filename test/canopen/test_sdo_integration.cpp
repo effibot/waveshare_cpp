@@ -99,7 +99,8 @@ std::string get_motor_config_path() {
 // INTEGRATION TESTS
 // ==============================================================================
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Environment Check", "[integration][sdo]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Environment Check",
+    "[integration][sdo]") {
     SECTION("vcan0 interface availability") {
         if (!is_vcan0_available()) {
             WARN(
@@ -118,7 +119,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Environment Check"
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword", "[integration][sdo][statusword]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword",
+    "[integration][sdo][statusword]") {
     if (!is_vcan_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met (vcan0 or motor_config.json missing)");
     }
@@ -161,7 +163,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword", 
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Register", "[integration][sdo][error]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Register",
+    "[integration][sdo][error]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -201,7 +204,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Registe
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Operation", "[integration][sdo][mode]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Operation",
+    "[integration][sdo][mode]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -247,7 +251,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Opera
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and Velocity", "[integration][sdo][feedback]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and Velocity",
+    "[integration][sdo][feedback]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -278,7 +283,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and 
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Operation (Safe)", "[integration][sdo][write]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Operation (Safe)",
+    "[integration][sdo][write]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -321,7 +327,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Oper
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Multiple Sequential Reads", "[integration][sdo][performance]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Multiple Sequential Reads",
+    "[integration][sdo][performance]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }

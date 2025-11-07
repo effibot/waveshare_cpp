@@ -78,7 +78,8 @@ std::string get_motor_config_path() {
 // INTEGRATION TESTS
 // ==============================================================================
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Environment Check", "[integration][cia402]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Environment Check",
+    "[integration][cia402]") {
     SECTION("Prerequisites available") {
         if (!is_vcan0_available()) {
             WARN("vcan0 interface not found");
@@ -96,7 +97,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Environment Che
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Reading", "[integration][cia402][state]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Reading",
+    "[integration][cia402][state]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -131,7 +133,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Reading",
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Fault Reset (if needed)", "[integration][cia402][fault]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Fault Reset (if needed)",
+    "[integration][cia402][fault]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -167,7 +170,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Fault Reset (if
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Enable Operation Sequence", "[integration][cia402][enable]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Enable Operation Sequence",
+    "[integration][cia402][enable]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -239,7 +243,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Enable Operatio
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Shutdown Sequence", "[integration][cia402][shutdown]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Shutdown Sequence",
+    "[integration][cia402][shutdown]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -298,7 +303,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Shutdown Sequen
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Persistence", "[integration][cia402][persistence]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Persistence",
+    "[integration][cia402][persistence]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -334,7 +340,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Persisten
     }
 }
 
-TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Complete Cycle", "[integration][cia402][cycle]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Complete Cycle",
+    "[integration][cia402][cycle]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }

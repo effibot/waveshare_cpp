@@ -242,7 +242,7 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Type-safe template methods",
     }
 
     auto socket_1 = create_test_socket("vcan0");
-        SDOClient client(socket_1, *dict, 1);
+    SDOClient client(socket_1, *dict, 1);
 
     SECTION("Write uint16_t using template method") {
         // Will timeout but syntax should compile and execute
@@ -300,7 +300,7 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Error handling", "[sdo_client][er
     }
 
     auto socket_1 = create_test_socket("vcan0");
-        SDOClient client(socket_1, *dict, 1);
+    SDOClient client(socket_1, *dict, 1);
 
     SECTION("Write to non-existent object") {
         std::vector<uint8_t> data = {0x00, 0x00};
@@ -330,7 +330,7 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Performance characteristics",
     }
 
     auto socket_1 = create_test_socket("vcan0");
-        SDOClient client(socket_1, *dict, 1);
+    SDOClient client(socket_1, *dict, 1);
 
     SECTION("Timeout behavior") {
         auto start = std::chrono::steady_clock::now();

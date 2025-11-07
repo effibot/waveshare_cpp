@@ -227,8 +227,8 @@ namespace canopen {
              * @brief Get CAN interface name
              * @return Interface name (e.g., "vcan0")
              */
-            std::string get_interface() const { 
-                return socket_ ? socket_->get_interface_name() : ""; 
+            std::string get_interface() const {
+                return socket_ ? socket_->get_interface_name() : "";
             }
 
         private:
