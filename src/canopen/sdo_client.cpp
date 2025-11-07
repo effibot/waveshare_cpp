@@ -23,60 +23,20 @@
 namespace canopen {
 
     SDOClient::SDOClient(
-        const std::string& can_interface,
+        std::shared_ptr<waveshare::ICANSocket> socket,
         const ObjectDictionary& dictionary,
         uint8_t node_id
-    ) : dictionary_(dictionary),
-        node_id_(node_id),
-        socket_fd_(-1),
-        can_interface_(can_interface) {
-        open_socket();
-    }
-
-    SDOClient::~SDOClient() {
-        close_socket();
-    }
-
-    void SDOClient::open_socket() {
-        // Create CAN socket
-        socket_fd_ = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-        if (socket_fd_ < 0) {
-            throw std::runtime_error("Failed to create CAN socket: " +
-                std::string(strerror(errno)));
+    ) : socket_(std::move(socket)),
+        dictionary_(dictionary),
+        node_id_(node_id) {
+        if (!socket_ || !socket_->is_open()) {
+            throw std::runtime_error("SDOClient: socket must be open and valid");
         }
-
-        // Get interface index
-        struct ifreq ifr;
-        std::strncpy(ifr.ifr_name, can_interface_.c_str(), IFNAMSIZ - 1);
-        ifr.ifr_name[IFNAMSIZ - 1] = '\0';
-
-        if (ioctl(socket_fd_, SIOCGIFINDEX, &ifr) < 0) {
-            close(socket_fd_);
-            throw std::runtime_error("CAN interface not found: " + can_interface_ +
-                " (Error: " + std::string(strerror(errno)) + ")");
-        }
-
-        // Bind socket to interface
-        struct sockaddr_can addr;
-        std::memset(&addr, 0, sizeof(addr));
-        addr.can_family = AF_CAN;
-        addr.can_ifindex = ifr.ifr_ifindex;
-
-        if (bind(socket_fd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            close(socket_fd_);
-            throw std::runtime_error("Failed to bind CAN socket: " + std::string(strerror(errno)));
-        }
-
-        std::cout << "[SDO] Connected to " << can_interface_
+        std::cout << "[SDO] Initialized for " << socket_->get_interface_name()
                   << " (Node ID: " << static_cast<int>(node_id_) << ")\n";
     }
 
-    void SDOClient::close_socket() {
-        if (socket_fd_ >= 0) {
-            close(socket_fd_);
-            socket_fd_ = -1;
-        }
-    }
+    SDOClient::~SDOClient() = default;
 
     bool SDOClient::write_object(
         const std::string& object_name,
@@ -228,13 +188,13 @@ namespace canopen {
         }
         std::cout << std::dec << std::endl;
 
-        ssize_t bytes_sent = send(socket_fd_, &frame, sizeof(frame), 0);
+        ssize_t bytes_sent = socket_->send(frame);
         return bytes_sent == sizeof(frame);
     }
 
     bool SDOClient::receive_frame(can_frame& frame, std::chrono::milliseconds timeout) {
         struct pollfd pfd;
-        pfd.fd = socket_fd_;
+        pfd.fd = socket_->get_fd();
         pfd.events = POLLIN;
 
         int poll_result = poll(&pfd, 1, timeout.count());
@@ -249,7 +209,7 @@ namespace canopen {
             return false;
         }
 
-        ssize_t bytes_received = recv(socket_fd_, &frame, sizeof(frame), 0);
+        ssize_t bytes_received = socket_->receive(frame);
         if (bytes_received != sizeof(frame)) {
             return false;
         }

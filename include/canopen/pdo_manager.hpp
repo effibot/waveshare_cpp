@@ -14,6 +14,7 @@
 #pragma once
 
 #include "canopen/pdo_constants.hpp"
+#include "io/can_socket.hpp"
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <functional>
@@ -25,6 +26,7 @@
 #include <chrono>
 #include <string>
 #include <cstdint>
+#include <memory>
 
 namespace canopen {
 
@@ -45,10 +47,10 @@ namespace canopen {
     class PDOManager {
         public:
             /**
-             * @brief Construct PDO Manager
-             * @param can_interface CAN interface name (e.g., "vcan0", "can0")
+             * @brief Construct PDO Manager with socket dependency injection
+             * @param socket Shared pointer to CAN socket implementation
              */
-            explicit PDOManager(const std::string& can_interface);
+            explicit PDOManager(std::shared_ptr<waveshare::ICANSocket> socket);
 
             /**
              * @brief Destructor - stops receive thread and closes socket
@@ -225,15 +227,16 @@ namespace canopen {
              * @brief Get CAN interface name
              * @return Interface name (e.g., "vcan0")
              */
-            std::string get_interface() const { return can_interface_; }
+            std::string get_interface() const { 
+                return socket_ ? socket_->get_interface_name() : ""; 
+            }
 
         private:
             // =========================================================================
             // SocketCAN Communication
             // =========================================================================
 
-            int socket_fd_;
-            std::string can_interface_;
+            std::shared_ptr<waveshare::ICANSocket> socket_;
 
             // Receive thread
             std::thread receive_thread_;

@@ -21,10 +21,12 @@ namespace canopen {
 // Constructor / Destructor
 // =============================================================================
 
-    PDOManager::PDOManager(const std::string& can_interface)
-        : socket_fd_(-1)
-        , can_interface_(can_interface)
+    PDOManager::PDOManager(std::shared_ptr<waveshare::ICANSocket> socket)
+        : socket_(std::move(socket))
         , running_(false) {
+        if (!socket_ || !socket_->is_open()) {
+            throw std::runtime_error("PDOManager: socket must be open and valid");
+        }
     }
 
     PDOManager::~PDOManager() {
@@ -41,40 +43,12 @@ namespace canopen {
             return true;
         }
 
-        // Create SocketCAN socket
-        socket_fd_ = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-        if (socket_fd_ < 0) {
-            std::cerr << "[PDO] Failed to create socket: " << strerror(errno) << std::endl;
+        if (!socket_ || !socket_->is_open()) {
+            std::cerr << "[PDO] Socket is not open" << std::endl;
             return false;
         }
 
-        // Get interface index
-        struct ifreq ifr;
-        std::strncpy(ifr.ifr_name, can_interface_.c_str(), IFNAMSIZ - 1);
-        ifr.ifr_name[IFNAMSIZ - 1] = '\0';
-
-        if (ioctl(socket_fd_, SIOCGIFINDEX, &ifr) < 0) {
-            std::cerr << "[PDO] Failed to get interface index for " << can_interface_
-                      << ": " << strerror(errno) << std::endl;
-            close(socket_fd_);
-            socket_fd_ = -1;
-            return false;
-        }
-
-        // Bind socket to interface
-        struct sockaddr_can addr;
-        std::memset(&addr, 0, sizeof(addr));
-        addr.can_family = AF_CAN;
-        addr.can_ifindex = ifr.ifr_ifindex;
-
-        if (bind(socket_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-            std::cerr << "[PDO] Failed to bind socket: " << strerror(errno) << std::endl;
-            close(socket_fd_);
-            socket_fd_ = -1;
-            return false;
-        }
-
-        std::cout << "[PDO] Connected to " << can_interface_ << std::endl;
+        std::cout << "[PDO] Starting on " << socket_->get_interface_name() << std::endl;
 
         // Start receive thread
         running_.store(true);
@@ -94,12 +68,6 @@ namespace canopen {
         running_.store(false);
         if (receive_thread_.joinable()) {
             receive_thread_.join();
-        }
-
-        // Close socket
-        if (socket_fd_ >= 0) {
-            close(socket_fd_);
-            socket_fd_ = -1;
         }
 
         std::cout << "[PDO] Stopped" << std::endl;
@@ -156,12 +124,12 @@ namespace canopen {
     }
 
     bool PDOManager::send_frame(const can_frame& frame) {
-        if (socket_fd_ < 0) {
+        if (!socket_ || !socket_->is_open()) {
             std::cerr << "[PDO] Socket not open" << std::endl;
             return false;
         }
 
-        ssize_t nbytes = send(socket_fd_, &frame, sizeof(frame), 0);
+        ssize_t nbytes = socket_->send(frame);
 
         if (nbytes != sizeof(frame)) {
             std::cerr << "[PDO] Failed to send frame: " << strerror(errno) << std::endl;
@@ -220,13 +188,13 @@ namespace canopen {
             // Receive CAN frame (blocking with timeout)
             fd_set readfds;
             FD_ZERO(&readfds);
-            FD_SET(socket_fd_, &readfds);
+            FD_SET(socket_->get_fd(), &readfds);
 
             struct timeval timeout;
             timeout.tv_sec = 0;
             timeout.tv_usec = 100000; // 100ms timeout
 
-            int ret = select(socket_fd_ + 1, &readfds, nullptr, nullptr, &timeout);
+            int ret = select(socket_->get_fd() + 1, &readfds, nullptr, nullptr, &timeout);
 
             if (ret < 0) {
                 if (errno != EINTR) {
@@ -241,7 +209,7 @@ namespace canopen {
             }
 
             // Read frame
-            ssize_t nbytes = recv(socket_fd_, &frame, sizeof(frame), 0);
+            ssize_t nbytes = socket_->receive(frame);
 
             if (nbytes < 0) {
                 std::cerr << "[PDO] recv() error: " << strerror(errno) << std::endl;

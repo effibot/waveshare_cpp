@@ -12,6 +12,7 @@
 #pragma once
 
 #include "canopen/object_dictionary.hpp"
+#include "io/can_socket.hpp"
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <cstdint>
@@ -23,22 +24,21 @@
 namespace canopen {
 
 /**
- * @brief SDO Client using raw SocketCAN interface
+ * @brief SDO Client using ICANSocket abstraction
  *
- * This client sends/receives CAN frames directly through a SocketCAN socket.
- * It does NOT depend on the Waveshare bridge - the bridge forwards frames
- * transparently between the SocketCAN interface and the USB adapter.
+ * This client sends/receives CAN frames through the ICANSocket interface,
+ * enabling dependency injection and mock-based testing.
  */
     class SDOClient {
         public:
             /**
-             * @brief Construct SDO client with SocketCAN interface
-             * @param can_interface Name of SocketCAN interface (e.g., "can0", "vcan0")
+             * @brief Construct SDO client with socket dependency injection
+             * @param socket Shared pointer to CAN socket implementation
              * @param dictionary Reference to object dictionary
              * @param node_id CANopen node ID of the target device
              */
             explicit SDOClient(
-                const std::string& can_interface,
+                std::shared_ptr<waveshare::ICANSocket> socket,
                 const ObjectDictionary& dictionary,
                 uint8_t node_id
             );
@@ -94,17 +94,12 @@ namespace canopen {
             /**
              * @brief Check if socket is open and operational
              */
-            bool is_open() const { return socket_fd_ >= 0; }
+            bool is_open() const { return socket_ && socket_->is_open(); }
 
         private:
+            std::shared_ptr<waveshare::ICANSocket> socket_;
             const ObjectDictionary& dictionary_;
             uint8_t node_id_;
-            int socket_fd_; // Raw SocketCAN socket file descriptor
-            std::string can_interface_;
-
-            // SocketCAN operations
-            void open_socket();
-            void close_socket();
 
             // SDO protocol helpers (CiA 301)
             can_frame create_sdo_write_expedited(uint16_t index, uint8_t subindex,
