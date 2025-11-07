@@ -8,11 +8,27 @@
 #include <catch2/catch_test_macros.hpp>
 #include "canopen/pdo_manager.hpp"
 #include "canopen/pdo_constants.hpp"
+#include "test_utils_canopen.hpp"
 #include <thread>
 #include <chrono>
 
 using namespace canopen;
 using namespace canopen::pdo;
+using namespace test_utils;
+
+// Mock socket for unit testing (doesn't need real CAN interface)
+namespace {
+    class MockCANSocket : public waveshare::ICANSocket {
+        bool open_ = true;
+    public:
+        ssize_t send(const struct can_frame&) override { return sizeof(can_frame); }
+        ssize_t receive(struct can_frame&) override { return sizeof(can_frame); }
+        bool is_open() const override { return open_; }
+        void close() override { open_ = false; }
+        std::string get_interface_name() const override { return "mock0"; }
+        int get_fd() const override { return 99; }
+    };
+}
 
 // =============================================================================
 // COB-ID Calculation Tests
@@ -68,17 +84,16 @@ TEST_CASE("PDOManager: COB-ID calculation", "[pdo_manager][cob_id]") {
 // =============================================================================
 
 TEST_CASE("PDOManager: Lifecycle management", "[pdo_manager][lifecycle]") {
-    // Note: These tests require vcan0 to be available
-    // Skip if vcan0 not available (integration test environment only)
+    auto socket = std::make_shared<MockCANSocket>();
 
     SECTION("Construction") {
-        PDOManager pdo("vcan0");
+        PDOManager pdo(socket);
         REQUIRE_FALSE(pdo.is_running());
-        REQUIRE(pdo.get_interface() == "vcan0");
+        REQUIRE(pdo.get_interface() == "mock0");
     }
 
     SECTION("Multiple stop calls are safe") {
-        PDOManager pdo("vcan0");
+        PDOManager pdo(socket);
         pdo.stop();
         pdo.stop();  // Should not crash
         REQUIRE_FALSE(pdo.is_running());
@@ -90,7 +105,8 @@ TEST_CASE("PDOManager: Lifecycle management", "[pdo_manager][lifecycle]") {
 // =============================================================================
 
 TEST_CASE("PDOManager: Callback registration", "[pdo_manager][callbacks]") {
-    PDOManager pdo("vcan0");
+    auto socket = std::make_shared<MockCANSocket>();
+    PDOManager pdo(socket);
 
     SECTION("Register TPDO1 callback") {
         bool callback_called = false;
@@ -138,7 +154,8 @@ TEST_CASE("PDOManager: Callback registration", "[pdo_manager][callbacks]") {
 // =============================================================================
 
 TEST_CASE("PDOManager: Statistics tracking", "[pdo_manager][statistics]") {
-    PDOManager pdo("vcan0");
+    auto socket = std::make_shared<MockCANSocket>();
+    PDOManager pdo(socket);
 
     SECTION("Initial statistics are zero") {
         auto stats = pdo.get_statistics(1);
@@ -182,7 +199,8 @@ TEST_CASE("PDOManager: Statistics tracking", "[pdo_manager][statistics]") {
 // =============================================================================
 
 TEST_CASE("PDOManager: RPDO data validation", "[pdo_manager][rpdo]") {
-    PDOManager pdo("vcan0");
+    auto socket = std::make_shared<MockCANSocket>();
+    PDOManager pdo(socket);
 
     SECTION("Valid RPDO1 data size") {
         std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04};
@@ -211,7 +229,8 @@ TEST_CASE("PDOManager: RPDO data validation", "[pdo_manager][rpdo]") {
 // =============================================================================
 
 TEST_CASE("PDOManager: Multi-motor support", "[pdo_manager][multi_motor]") {
-    PDOManager pdo("vcan0");
+    auto socket = std::make_shared<MockCANSocket>();
+    PDOManager pdo(socket);
 
     SECTION("Register callbacks for 4 motors") {
         int callback_count = 0;

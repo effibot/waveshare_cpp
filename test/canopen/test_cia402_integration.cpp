@@ -22,12 +22,13 @@
 #include "canopen/cia402_fsm.hpp"
 #include "canopen/object_dictionary.hpp"
 #include "canopen/sdo_client.hpp"
+#include "test_utils_canopen.hpp"
 #include <iostream>
-#include <filesystem>
 #include <thread>
 #include <chrono>
 
 using namespace canopen;
+using namespace test_utils;
 using namespace canopen::cia402;
 using Catch::Matchers::ContainsSubstring;
 
@@ -77,7 +78,7 @@ std::string get_motor_config_path() {
 // INTEGRATION TESTS
 // ==============================================================================
 
-TEST_CASE("CIA402 Integration: Environment Check", "[integration][cia402]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Environment Check", "[integration][cia402]") {
     SECTION("Prerequisites available") {
         if (!is_vcan0_available()) {
             WARN("vcan0 interface not found");
@@ -95,7 +96,7 @@ TEST_CASE("CIA402 Integration: Environment Check", "[integration][cia402]") {
     }
 }
 
-TEST_CASE("CIA402 Integration: State Reading", "[integration][cia402][state]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Reading", "[integration][cia402][state]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -105,7 +106,8 @@ TEST_CASE("CIA402 Integration: State Reading", "[integration][cia402][state]") {
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         // Read current state
@@ -129,7 +131,7 @@ TEST_CASE("CIA402 Integration: State Reading", "[integration][cia402][state]") {
     }
 }
 
-TEST_CASE("CIA402 Integration: Fault Reset (if needed)", "[integration][cia402][fault]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Fault Reset (if needed)", "[integration][cia402][fault]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -139,7 +141,8 @@ TEST_CASE("CIA402 Integration: Fault Reset (if needed)", "[integration][cia402][
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         State current_state = fsm.get_current_state(true);
@@ -164,7 +167,7 @@ TEST_CASE("CIA402 Integration: Fault Reset (if needed)", "[integration][cia402][
     }
 }
 
-TEST_CASE("CIA402 Integration: Enable Operation Sequence", "[integration][cia402][enable]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Enable Operation Sequence", "[integration][cia402][enable]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -175,7 +178,8 @@ TEST_CASE("CIA402 Integration: Enable Operation Sequence", "[integration][cia402
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         State initial_state = fsm.get_current_state(true);
@@ -235,7 +239,7 @@ TEST_CASE("CIA402 Integration: Enable Operation Sequence", "[integration][cia402
     }
 }
 
-TEST_CASE("CIA402 Integration: Shutdown Sequence", "[integration][cia402][shutdown]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Shutdown Sequence", "[integration][cia402][shutdown]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -245,7 +249,8 @@ TEST_CASE("CIA402 Integration: Shutdown Sequence", "[integration][cia402][shutdo
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         State initial_state = fsm.get_current_state(true);
@@ -293,7 +298,7 @@ TEST_CASE("CIA402 Integration: Shutdown Sequence", "[integration][cia402][shutdo
     }
 }
 
-TEST_CASE("CIA402 Integration: State Persistence", "[integration][cia402][persistence]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Persistence", "[integration][cia402][persistence]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -303,7 +308,8 @@ TEST_CASE("CIA402 Integration: State Persistence", "[integration][cia402][persis
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         // Read state multiple times
@@ -328,7 +334,7 @@ TEST_CASE("CIA402 Integration: State Persistence", "[integration][cia402][persis
     }
 }
 
-TEST_CASE("CIA402 Integration: Complete Cycle", "[integration][cia402][cycle]") {
+TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Complete Cycle", "[integration][cia402][cycle]") {
     if (!is_vcan0_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
@@ -339,7 +345,8 @@ TEST_CASE("CIA402 Integration: Complete Cycle", "[integration][cia402][cycle]") 
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        SDOClient sdo_client("vcan0", dict, dict.get_node_id());
+        auto socket = create_test_socket("vcan0");
+        SDOClient sdo_client(socket, dict, dict.get_node_id());
         CIA402FSM fsm(sdo_client, dict);
 
         State start_state = fsm.get_current_state(true);

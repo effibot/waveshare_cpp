@@ -18,6 +18,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include "canopen/sdo_client.hpp"
 #include "canopen/object_dictionary.hpp"
+#include "test_utils_canopen.hpp"
 #include <fstream>
 #include <filesystem>
 #include <linux/can.h>
@@ -25,6 +26,7 @@
 #include <chrono>
 
 using namespace canopen;
+using namespace test_utils;
 using Catch::Matchers::ContainsSubstring;
 
 // ============================================================================
@@ -184,22 +186,25 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Socket creation and binding",
     }
 
     SECTION("Successfully create SDOClient with vcan0") {
-        REQUIRE_NOTHROW(SDOClient("vcan0", *dict, 1));
+        auto socket = create_test_socket("vcan0");
+        REQUIRE_NOTHROW(SDOClient(socket, *dict, 1));
 
-        SDOClient client("vcan0", *dict, 1);
+        SDOClient client(socket, *dict, 1);
         REQUIRE(client.is_open());
     }
 
     SECTION("Throw exception for invalid interface") {
         REQUIRE_THROWS_WITH(
-            SDOClient("nonexistent_can", *dict, 1),
-            ContainsSubstring("CAN interface not found")
+            create_test_socket("nonexistent_can"),
+            ContainsSubstring("Interface not found")
         );
     }
 
     SECTION("Multiple clients on same interface") {
-        SDOClient client1("vcan0", *dict, 1);
-        SDOClient client2("vcan0", *dict, 2);
+        auto socket1 = create_test_socket("vcan0");
+        auto socket2 = create_test_socket("vcan0");
+        SDOClient client1(socket1, *dict, 1);
+        SDOClient client2(socket2, *dict, 2);
 
         REQUIRE(client1.is_open());
         REQUIRE(client2.is_open());
@@ -213,7 +218,8 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Frame send/receive on vcan0",
     }
 
     SECTION("Send SDO write frame to vcan0") {
-        SDOClient client("vcan0", *dict, 1);
+        auto socket_1 = create_test_socket("vcan0");
+        SDOClient client(socket_1, *dict, 1);
 
         // Attempt to write controlword (will timeout without real device)
         uint16_t value = 0x000F;
@@ -235,7 +241,8 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Type-safe template methods",
         SKIP("vcan0 not available");
     }
 
-    SDOClient client("vcan0", *dict, 1);
+    auto socket_1 = create_test_socket("vcan0");
+        SDOClient client(socket_1, *dict, 1);
 
     SECTION("Write uint16_t using template method") {
         // Will timeout but syntax should compile and execute
@@ -263,7 +270,8 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Loopback test with candump verifi
     }
 
     SECTION("Send recognizable frame for candump verification") {
-        SDOClient client("vcan0", *dict, 1);
+        auto socket_1 = create_test_socket("vcan0");
+        SDOClient client(socket_1, *dict, 1);
 
         INFO("Run 'candump vcan0' in another terminal to verify frames");
         INFO("Expected COB-ID: 0x601 (0x600 + node_id)");
@@ -291,7 +299,8 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Error handling", "[sdo_client][er
         SKIP("vcan0 not available");
     }
 
-    SDOClient client("vcan0", *dict, 1);
+    auto socket_1 = create_test_socket("vcan0");
+        SDOClient client(socket_1, *dict, 1);
 
     SECTION("Write to non-existent object") {
         std::vector<uint8_t> data = {0x00, 0x00};
@@ -320,7 +329,8 @@ TEST_CASE_METHOD(SDOClientFixture, "SDOClient: Performance characteristics",
         SKIP("vcan0 not available");
     }
 
-    SDOClient client("vcan0", *dict, 1);
+    auto socket_1 = create_test_socket("vcan0");
+        SDOClient client(socket_1, *dict, 1);
 
     SECTION("Timeout behavior") {
         auto start = std::chrono::steady_clock::now();

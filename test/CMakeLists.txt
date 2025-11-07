@@ -31,6 +31,7 @@ endif()
 
 # Find source files for tests
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+file(GLOB CANOPEN_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/canopen/*.cpp")
 
 # Register the tests for Catch2
 include(Catch)
@@ -39,5 +40,17 @@ foreach(test_src ${TEST_SOURCES})
     add_executable(${test_name} ${test_src})
     target_link_libraries(${test_name} PRIVATE Catch2::Catch2WithMain waveshare_cpp)
     target_include_directories(${test_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    catch_discover_tests(${test_name})
+endforeach()
+
+# CANopen tests
+foreach(test_src ${CANOPEN_TEST_SOURCES})
+    get_filename_component(test_name ${test_src} NAME_WE)
+    add_executable(${test_name} ${test_src})
+    target_link_libraries(${test_name} PRIVATE Catch2::Catch2WithMain waveshare_canopen waveshare_cpp)
+    target_include_directories(${test_name} PRIVATE 
+        ${PROJECT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/canopen  # Make test_utils_canopen.hpp available
+    )
     catch_discover_tests(${test_name})
 endforeach()
