@@ -12,8 +12,12 @@
 #include <stdexcept>
 #include <unistd.h>
 
+#include <nlohmann/json.hpp>
+
 #include "../include/pattern/bridge_config.hpp"
 #include "../include/exception/waveshare_exception.hpp"
+
+using json = nlohmann::json;
 
 namespace waveshare {
 
@@ -83,7 +87,62 @@ namespace waveshare {
         return val ? std::string(val) : default_val;
     }
 
-    // === .env File Parsing ===
+    // === JSON File Parsing ===
+
+    BridgeConfig BridgeConfig::from_json(const json& j) {
+        BridgeConfig config = create_default();
+
+        // Convert JSON to string map to reuse apply_config_map logic
+        std::map<std::string, std::string> config_map;
+
+        if (j.contains("bridge_config")) {
+            const auto& bc = j["bridge_config"];
+
+            // Convert JSON fields to WAVESHARE_* format to reuse existing parsing logic
+            if (bc.contains("socketcan_interface")) {
+                config_map["WAVESHARE_SOCKETCAN_INTERFACE"] = bc["socketcan_interface"].get<std::string>();
+            }
+            if (bc.contains("usb_device_path")) {
+                config_map["WAVESHARE_USB_DEVICE"] = bc["usb_device_path"].get<std::string>();
+            }
+            if (bc.contains("serial_baud_rate")) {
+                config_map["WAVESHARE_SERIAL_BAUD"] =
+                    std::to_string(bc["serial_baud_rate"].get<int>());
+            }
+            if (bc.contains("can_baud_rate")) {
+                config_map["WAVESHARE_CAN_BAUD"] = std::to_string(bc["can_baud_rate"].get<int>());
+            }
+            if (bc.contains("can_mode")) {
+                config_map["WAVESHARE_CAN_MODE"] = bc["can_mode"].get<std::string>();
+            }
+            if (bc.contains("auto_retransmit")) {
+                config_map["WAVESHARE_AUTO_RETRANSMIT"] =
+                    bc["auto_retransmit"].get<bool>() ? "true" : "false";
+            }
+            if (bc.contains("filter_id")) {
+                config_map["WAVESHARE_FILTER_ID"] = std::to_string(bc["filter_id"].get<uint32_t>());
+            }
+            if (bc.contains("filter_mask")) {
+                config_map["WAVESHARE_FILTER_MASK"] =
+                    std::to_string(bc["filter_mask"].get<uint32_t>());
+            }
+            if (bc.contains("usb_read_timeout_ms")) {
+                config_map["WAVESHARE_USB_READ_TIMEOUT"] =
+                    std::to_string(bc["usb_read_timeout_ms"].get<uint32_t>());
+            }
+            if (bc.contains("socketcan_read_timeout_ms")) {
+                config_map["WAVESHARE_SOCKETCAN_READ_TIMEOUT"] =
+                    std::to_string(bc["socketcan_read_timeout_ms"].get<uint32_t>());
+            }
+        }
+
+        // Reuse existing parsing logic
+        apply_config_map(config, config_map);
+
+        return config;
+    }
+
+    // === .env File Parsing (DEPRECATED - kept for backward compatibility) ===
 
     std::map<std::string, std::string> BridgeConfig::parse_env_file(const std::string& filepath) {
         std::map<std::string, std::string> result;
@@ -152,15 +211,9 @@ namespace waveshare {
         // Apply serial baud rate
         if (auto val = get_val("WAVESHARE_SERIAL_BAUD")) {
             int baud = std::stoi(*val);
-            switch (baud) {
-            case 9600:    config.serial_baud_rate = SerialBaud::BAUD_9600; break;
-            case 19200:   config.serial_baud_rate = SerialBaud::BAUD_19200; break;
-            case 38400:   config.serial_baud_rate = SerialBaud::BAUD_38400; break;
-            case 57600:   config.serial_baud_rate = SerialBaud::BAUD_57600; break;
-            case 115200:  config.serial_baud_rate = SerialBaud::BAUD_115200; break;
-            case 153600:  config.serial_baud_rate = SerialBaud::BAUD_153600; break;
-            case 2000000: config.serial_baud_rate = SerialBaud::BAUD_2M; break;
-            default:
+            bool use_default = false;
+            config.serial_baud_rate = serialbaud_from_int(baud, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid serial baud rate: " + *val);
             }
         }
@@ -168,20 +221,9 @@ namespace waveshare {
         // Apply CAN baud rate
         if (auto val = get_val("WAVESHARE_CAN_BAUD")) {
             int baud = std::stoi(*val);
-            switch (baud) {
-            case 5000:    config.can_baud_rate = CANBaud::BAUD_5K; break;
-            case 10000:   config.can_baud_rate = CANBaud::BAUD_10K; break;
-            case 20000:   config.can_baud_rate = CANBaud::BAUD_20K; break;
-            case 50000:   config.can_baud_rate = CANBaud::BAUD_50K; break;
-            case 100000:  config.can_baud_rate = CANBaud::BAUD_100K; break;
-            case 125000:  config.can_baud_rate = CANBaud::BAUD_125K; break;
-            case 200000:  config.can_baud_rate = CANBaud::BAUD_200K; break;
-            case 250000:  config.can_baud_rate = CANBaud::BAUD_250K; break;
-            case 400000:  config.can_baud_rate = CANBaud::BAUD_400K; break;
-            case 500000:  config.can_baud_rate = CANBaud::BAUD_500K; break;
-            case 800000:  config.can_baud_rate = CANBaud::BAUD_800K; break;
-            case 1000000: config.can_baud_rate = CANBaud::BAUD_1M; break;
-            default:
+            bool use_default = false;
+            config.can_baud_rate = canbaud_from_int(baud, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid CAN baud rate: " + *val);
             }
         }
@@ -191,17 +233,12 @@ namespace waveshare {
             std::string mode = *val;
             // Convert to lowercase for case-insensitive comparison
             std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+            // Replace dash with underscore for consistency (loopback-silent -> loopback_silent)
+            std::replace(mode.begin(), mode.end(), '-', '_');
 
-            if (mode == "normal") {
-                config.can_mode = CANMode::NORMAL;
-            } else if (mode == "loopback") {
-                config.can_mode = CANMode::LOOPBACK;
-            } else if (mode == "silent") {
-                config.can_mode = CANMode::SILENT;
-            } else if (mode == "loopback-silent" || mode == "loopback_silent" ||
-                mode == "silent-loopback" || mode == "silent_loopback") {
-                config.can_mode = CANMode::LOOPBACK_SILENT;
-            } else {
+            bool use_default = false;
+            config.can_mode = canmode_from_string(mode, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid CAN mode: " + *val);
             }
         }
@@ -277,20 +314,60 @@ namespace waveshare {
     BridgeConfig BridgeConfig::from_file(const std::string& filepath, bool use_defaults) {
         BridgeConfig config = use_defaults ? create_default() : BridgeConfig{};
 
-        auto file_vars = parse_env_file(filepath);
-        apply_config_map(config, file_vars);
+        // Determine file type by extension (C++17 compatible)
+        bool is_json = (filepath.size() >= 5 &&
+            filepath.substr(filepath.size() - 5) == ".json");
+
+        if (is_json) {
+            // Parse as JSON
+            std::ifstream file(filepath);
+            if (!file.is_open()) {
+                throw std::runtime_error("Cannot open JSON config file: " + filepath);
+            }
+
+            try {
+                json j;
+                file >> j;
+                config = from_json(j);
+            } catch (const json::exception& e) {
+                throw std::runtime_error("JSON parse error in " + filepath + ": " + e.what());
+            }
+        } else {
+            // Parse as .env file (deprecated path)
+            auto file_vars = parse_env_file(filepath);
+            apply_config_map(config, file_vars);
+        }
 
         return config;
     }
 
-    BridgeConfig BridgeConfig::load(const std::optional<std::string>& env_file_path) {
+    BridgeConfig BridgeConfig::load(const std::optional<std::string>& config_file_path) {
         // Start with defaults
         BridgeConfig config = create_default();
 
-        // Apply .env file if provided
-        if (env_file_path.has_value()) {
-            auto file_vars = parse_env_file(*env_file_path);
-            apply_config_map(config, file_vars);
+        // Apply config file if provided (JSON or .env)
+        if (config_file_path.has_value()) {
+            // Determine file type by extension (C++17 compatible)
+            bool is_json = (config_file_path->size() >= 5 &&
+                config_file_path->substr(config_file_path->size() - 5) == ".json");
+
+            if (is_json) {
+                std::ifstream file(*config_file_path);
+                if (file.is_open()) {
+                    try {
+                        json j;
+                        file >> j;
+                        config = from_json(j);
+                    } catch (const json::exception& e) {
+                        throw std::runtime_error("JSON parse error in " + *config_file_path + ": " +
+                            e.what());
+                    }
+                }
+            } else {
+                // Legacy .env file support
+                auto file_vars = parse_env_file(*config_file_path);
+                apply_config_map(config, file_vars);
+            }
         }
 
         // Apply environment variables (highest priority)

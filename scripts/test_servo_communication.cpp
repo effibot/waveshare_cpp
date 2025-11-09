@@ -377,6 +377,148 @@ class ServoTester {
             return true;
         }
 
+        bool test_pdo_communication() {
+            std::cout << "\n=== PDO Communication Test ===" << std::endl;
+            std::cout << "Testing Process Data Objects (PDOs) for real-time communication" <<
+                std::endl;
+
+            // PDO COB-IDs for this node
+            uint32_t rpdo1_cob = 0x200 + node_id_;  // Receive PDO 1 (host -> motor)
+            uint32_t rpdo2_cob = 0x300 + node_id_;  // Receive PDO 2
+            uint32_t tpdo1_cob = 0x180 + node_id_;  // Transmit PDO 1 (motor -> host)
+            uint32_t tpdo2_cob = 0x280 + node_id_;  // Transmit PDO 2
+            uint32_t sync_cob = 0x80;               // SYNC message
+
+            std::cout << "  RPDO1 COB-ID: 0x" << std::hex << rpdo1_cob << std::dec <<
+                " (commands to motor)" << std::endl;
+            std::cout << "  RPDO2 COB-ID: 0x" << std::hex << rpdo2_cob << std::dec << std::endl;
+            std::cout << "  TPDO1 COB-ID: 0x" << std::hex << tpdo1_cob << std::dec <<
+                " (feedback from motor)" << std::endl;
+            std::cout << "  TPDO2 COB-ID: 0x" << std::hex << tpdo2_cob << std::dec << std::endl;
+            std::cout << "  SYNC COB-ID: 0x" << std::hex << sync_cob << std::dec << std::endl;
+
+            // Test 1: Send RPDO1 (Controlword + Target Position)
+            std::cout << "\n1. Testing RPDO1 (sending controlword + target position)..." <<
+                std::endl;
+
+            uint16_t controlword = 0x0006;  // Shutdown command
+            int32_t target_position = 1000;  // Example target
+
+            std::vector<uint8_t> rpdo1_data = {
+                static_cast<uint8_t>(controlword & 0xFF),
+                static_cast<uint8_t>((controlword >> 8) & 0xFF),
+                static_cast<uint8_t>(target_position & 0xFF),
+                static_cast<uint8_t>((target_position >> 8) & 0xFF),
+                static_cast<uint8_t>((target_position >> 16) & 0xFF),
+                static_cast<uint8_t>((target_position >> 24) & 0xFF),
+                0x00, 0x00
+            };
+
+            auto rpdo1_frame = FrameBuilder<VariableFrame>()
+                .with_type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
+                .with_id(rpdo1_cob)
+                .with_data(rpdo1_data)
+                .build();
+
+            try {
+                adapter_->send_frame(rpdo1_frame);
+                std::cout << "  ✓ RPDO1 sent: CW=0x" << std::hex << controlword
+                          << " Target=" << std::dec << target_position << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "  ❌ Failed to send RPDO1: " << e.what() << std::endl;
+                return false;
+            }
+
+            // Test 2: Send SYNC and listen for TPDOs
+            std::cout << "\n2. Testing SYNC-triggered TPDOs..." << std::endl;
+            std::cout << "  Sending SYNC message..." << std::endl;
+
+            auto sync_frame = FrameBuilder<VariableFrame>()
+                .with_type(CANVersion::STD_VARIABLE, Format::DATA_VARIABLE)
+                .with_id(sync_cob)
+                .with_data({})  // SYNC has no data
+                .build();
+
+            try {
+                adapter_->send_frame(sync_frame);
+                std::cout << "  ✓ SYNC sent (COB-ID 0x80)" << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "  ❌ Failed to send SYNC: " << e.what() << std::endl;
+                return false;
+            }
+
+            // Wait for TPDOs
+            std::cout << "  Listening for TPDO responses (5 second timeout)..." << std::endl;
+
+            bool tpdo1_received = false;
+            bool tpdo2_received = false;
+            auto start = std::chrono::steady_clock::now();
+
+            while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
+                try {
+                    auto frame = adapter_->receive_variable_frame();
+                    uint32_t cob_id = frame.get_can_id();
+                    auto data = frame.get_data();
+
+                    if (cob_id == tpdo1_cob && !tpdo1_received) {
+                        tpdo1_received = true;
+                        // TPDO1: Statusword (2 bytes) + Position Actual (4 bytes)
+                        if (data.size() >= 6) {
+                            uint16_t statusword = data[0] | (data[1] << 8);
+                            int32_t position = data[2] | (data[3] << 8) | (data[4] <<
+                                16) | (data[5] << 24);
+
+                            std::cout << "  ✓ TPDO1 received:" << std::endl;
+                            std::cout << "    Statusword: 0x" << std::hex << statusword <<
+                                std::dec << std::endl;
+                            std::cout << "    Position: " << position << " counts" << std::endl;
+                            print_status_details(statusword);
+                        }
+                    } else if (cob_id == tpdo2_cob && !tpdo2_received) {
+                        tpdo2_received = true;
+                        // TPDO2: Velocity Actual (4 bytes) + Current Actual (2 bytes)
+                        if (data.size() >= 6) {
+                            int32_t velocity = data[0] | (data[1] << 8) | (data[2] <<
+                                16) | (data[3] << 24);
+                            int16_t current = data[4] | (data[5] << 8);
+
+                            std::cout << "  ✓ TPDO2 received:" << std::endl;
+                            std::cout << "    Velocity: " << velocity << " counts/sec" << std::endl;
+                            std::cout << "    Current: " << current << " mA" << std::endl;
+                        }
+                    }
+
+                    if (tpdo1_received && tpdo2_received) {
+                        break;
+                    }
+
+                } catch (const TimeoutException&) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+            }
+
+            // Summary
+            std::cout << "\n  PDO Test Results:" << std::endl;
+            std::cout << "    RPDO1 (send):    ✓ Sent successfully" << std::endl;
+            std::cout << "    SYNC:            ✓ Sent successfully" << std::endl;
+            std::cout << "    TPDO1 (receive): " <<
+                (tpdo1_received ? "✓ Received" : "❌ Not received") << std::endl;
+            std::cout << "    TPDO2 (receive): " <<
+                (tpdo2_received ? "✓ Received" : "⚠ Not received (may not be configured)") <<
+            std::endl;
+
+            if (!tpdo1_received) {
+                std::cout << "\n  ⚠ Note: TPDOs may need to be configured in the motor." <<
+                    std::endl;
+                std::cout <<
+                    "    Check if TPDO mapping is enabled in the object dictionary (0x1800-0x1803)."
+                          <<
+                    std::endl;
+            }
+
+            return tpdo1_received;  // At minimum, TPDO1 should be received
+        }
+
         bool test_basic_control() {
             std::cout << "\n=== Basic Control Test ===" << std::endl;
             std::cout << "⚠ WARNING: This will attempt to enable the servo drive!" << std::endl;
@@ -469,9 +611,11 @@ class ServoTester {
         void run_full_test() {
             bool identification_ok = test_device_identification();
             bool communication_ok = test_ds402_communication();
+            bool pdo_ok = false;
             bool control_ok = false;
 
             if (identification_ok && communication_ok) {
+                pdo_ok = test_pdo_communication();
                 control_ok = test_basic_control();
             }
 
@@ -480,11 +624,18 @@ class ServoTester {
                 std::endl;
             std::cout << "DS402 Communication:   " << (communication_ok ? "✓ PASS" : "❌ FAIL") <<
                 std::endl;
+            std::cout << "PDO Communication:     " <<
+                (pdo_ok ? "✓ PASS" : "⚠ PARTIAL (see notes)") <<
+                std::endl;
             std::cout << "Basic Control:         " << (control_ok ? "✓ PASS" : "❌ FAIL") <<
                 std::endl;
 
             if (identification_ok && communication_ok) {
                 std::cout << "\n✓ Device communication is working correctly!" << std::endl;
+                if (pdo_ok) {
+                    std::cout << "✓ PDO communication is functional for real-time control!" <<
+                        std::endl;
+                }
                 std::cout << "You can proceed with ROS2 integration." << std::endl;
             } else {
                 std::cout << "\n❌ Communication issues detected." << std::endl;

@@ -26,9 +26,8 @@ add_subdirectory(src)
 # Add scripts subdirectory
 add_subdirectory(scripts)
 
-# Enable testing
+# Add tests (using Catch2, not CTest)
 if(BUILD_TESTS)
-    enable_testing()
     add_subdirectory(test)
 endif()
 

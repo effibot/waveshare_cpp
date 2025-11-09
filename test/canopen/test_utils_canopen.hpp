@@ -10,6 +10,7 @@
 #include "io/can_socket.hpp"
 #include "io/real_can_socket.hpp"
 #include "canopen/object_dictionary.hpp"
+#include "canopen/cia402_constants.hpp"
 #include <memory>
 #include <string>
 #include <thread>
@@ -54,13 +55,18 @@ namespace test_utils {
  * @brief Mock CANopen motor responder for integration tests
  *
  * Automatically responds to SDO requests on vcan_test with realistic motor data.
- * Runs in background thread to simulate a real motor driver.
+ * Runs in background thread to simulate a real motor driver with full CIA402 FSM.
+ *
+ * Uses node ID 127 (maximum for standard 11-bit CAN IDs) to avoid conflicts with
+ * real motor drivers which typically use IDs 1-10.
  */
     class MockMotorResponder {
         public:
-            explicit MockMotorResponder(uint8_t node_id, const std::string& interface = "vcan_test")
+            explicit MockMotorResponder(uint8_t node_id = 127,
+                const std::string& interface = "vcan_test")
                 : node_id_(node_id)
-                , running_(false) {
+                , running_(false)
+                , current_state_(canopen::cia402::State::SWITCH_ON_DISABLED) {
                 try {
                     socket_ = create_test_socket(interface);
                 } catch (const std::exception& e) {
@@ -69,12 +75,13 @@ namespace test_utils {
                 }
 
                 // Initialize mock register values (CIA402 standard registers)
-                registers_[0x6041] = 0x0637; // Statusword: ready to switch on
+                update_statusword_from_state();
                 registers_[0x1001] = 0x00; // Error register: no error
                 registers_[0x6061] = 0x01; // Mode of operation display: Profile Position
                 registers_[0x6064] = 0; // Position actual value
                 registers_[0x606C] = 0; // Velocity actual value
                 registers_[0x6077] = 0; // Torque actual value
+                registers_[0x6040] = 0x0000; // Controlword: initial state
             }
 
             ~MockMotorResponder() {
@@ -200,6 +207,11 @@ namespace test_utils {
                             if (index == 0x6060) {
                                 registers_[0x6061] = value;
                             }
+
+                            // Handle CIA402 controlword (0x6040) - update state machine
+                            if (index == 0x6040) {
+                                process_controlword(static_cast<uint16_t>(value));
+                            }
                         }
 
                         // Send download response (write confirmation)
@@ -214,10 +226,103 @@ namespace test_utils {
                 }
             }
 
+            // CIA402 state machine implementation
+            void process_controlword(uint16_t controlword) {
+                using namespace canopen::cia402;
+
+                // Extract command bits from controlword
+                uint8_t cmd_bits = controlword & 0x8F;
+
+                switch (current_state_) {
+                case State::SWITCH_ON_DISABLED:
+                    if ((cmd_bits & 0x0F) == 0x06) {     // Shutdown command
+                        current_state_ = State::READY_TO_SWITCH_ON;
+                    }
+                    break;
+
+                case State::READY_TO_SWITCH_ON:
+                    if ((cmd_bits & 0x0F) == 0x07) {     // Switch On command
+                        current_state_ = State::SWITCHED_ON;
+                    } else if ((cmd_bits & 0x0F) == 0x00) {     // Disable Voltage
+                        current_state_ = State::SWITCH_ON_DISABLED;
+                    }
+                    break;
+
+                case State::SWITCHED_ON:
+                    if ((cmd_bits & 0x0F) == 0x0F) {     // Enable Operation command
+                        current_state_ = State::OPERATION_ENABLED;
+                    } else if ((cmd_bits & 0x0F) == 0x06) {     // Shutdown
+                        current_state_ = State::READY_TO_SWITCH_ON;
+                    } else if ((cmd_bits & 0x0F) == 0x00) {     // Disable Voltage
+                        current_state_ = State::SWITCH_ON_DISABLED;
+                    }
+                    break;
+
+                case State::OPERATION_ENABLED:
+                    if ((cmd_bits & 0x0F) == 0x07) {     // Disable Operation command
+                        current_state_ = State::SWITCHED_ON;
+                    } else if ((cmd_bits & 0x0F) == 0x06) {     // Shutdown
+                        current_state_ = State::READY_TO_SWITCH_ON;
+                    } else if ((cmd_bits & 0x0F) == 0x00) {     // Disable Voltage
+                        current_state_ = State::SWITCH_ON_DISABLED;
+                    }
+                    break;
+
+                default:
+                    break;
+                }
+
+                // Update statusword to reflect new state
+                update_statusword_from_state();
+            }
+
+            void update_statusword_from_state() {
+                using namespace canopen::cia402;
+
+                uint16_t statusword = 0;
+
+                switch (current_state_) {
+                case State::NOT_READY_TO_SWITCH_ON:
+                    statusword = 0x0000;
+                    break;
+                case State::SWITCH_ON_DISABLED:
+                    statusword = 0x0040;
+                    break;
+                case State::READY_TO_SWITCH_ON:
+                    statusword = 0x0021;
+                    break;
+                case State::SWITCHED_ON:
+                    statusword = 0x0023;
+                    break;
+                case State::OPERATION_ENABLED:
+                    statusword = 0x0027;
+                    break;
+                case State::QUICK_STOP_ACTIVE:
+                    statusword = 0x0007;
+                    break;
+                case State::FAULT_REACTION_ACTIVE:
+                    statusword = 0x000F;
+                    break;
+                case State::FAULT:
+                    statusword = 0x0008;
+                    break;
+                case State::UNKNOWN:
+                    statusword = 0x0000;
+                    break;
+                }
+
+                // Add target reached and voltage enabled bits
+                statusword |= (1 << 10); // Target reached
+                statusword |= (1 << 9);  // Remote (CAN control)
+
+                registers_[0x6041] = statusword;
+            }
+
             uint8_t node_id_;
             std::atomic<bool> running_;
             std::shared_ptr<waveshare::ICANSocket> socket_;
             std::thread responder_thread_;
+            canopen::cia402::State current_state_;
 
             mutable std::mutex registers_mutex_;
             std::map<uint16_t, uint32_t> registers_;
@@ -229,16 +334,16 @@ namespace test_utils {
  * Usage with Catch2:
  *
  * TEST_CASE_METHOD(CANopenIntegrationFixture, "My test", "[integration]") {
- *     // mock_motor is already running on vcan_test
+ *     // mock_motor is already running on vcan_test with node ID 127
  *     auto socket = create_test_socket("vcan_test");
  *     auto dict = load_test_dictionary();
- *     SDOClient client(socket, dict, 1);
+ *     SDOClient client(socket, dict, 127);  // Use node ID 127 for mock motor
  *     // ... test code ...
  * }
  */
     class CANopenIntegrationFixture {
         protected:
-            CANopenIntegrationFixture(uint8_t node_id = 1)
+            CANopenIntegrationFixture(uint8_t node_id = 127)
                 : mock_motor(node_id, "vcan_test") {
                 if (is_vcan_available()) {
                     mock_motor.start();

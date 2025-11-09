@@ -110,7 +110,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Reading",
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         // Read current state
@@ -146,7 +146,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Fault Reset (if
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         State current_state = fsm.get_current_state(true);
@@ -184,7 +184,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Enable Operatio
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         State initial_state = fsm.get_current_state(true);
@@ -256,7 +256,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Shutdown Sequen
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         State initial_state = fsm.get_current_state(true);
@@ -316,7 +316,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: State Persisten
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         // Read state multiple times with shorter delays
@@ -383,7 +383,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "CIA402 Integration: Complete Cycle"
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
         CIA402FSM fsm(sdo_client, dict);
 
         State start_state = fsm.get_current_state(true);

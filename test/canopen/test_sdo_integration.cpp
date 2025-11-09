@@ -136,8 +136,8 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword",
 
         // Create SDO client
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
-        INFO("✓ Connected to vcan0, Node ID: " << static_cast<int>(dict.get_node_id()));
+        SDOClient sdo_client(socket, dict, 127);
+        INFO("✓ Connected to vcan0, Node ID: " << static_cast<int>(127));
 
         // Read statusword (0x6041)
         INFO("Reading Statusword (0x6041)...");
@@ -176,7 +176,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Registe
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
 
         // Read error register (0x1001)
         INFO("Reading Error Register (0x1001)...");
@@ -217,7 +217,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Opera
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
 
         // Read mode of operation display (0x6061)
         INFO("Reading Mode of Operation Display (0x6061)...");
@@ -264,7 +264,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and 
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
 
         // Read position actual value (0x6064)
         INFO("Reading Position Actual Value (0x6064)...");
@@ -296,7 +296,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Oper
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
 
         // First check if motor is in fault
         uint16_t statusword = sdo_client.read<uint16_t>("statusword");
@@ -340,7 +340,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Multiple Sequentia
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
         auto socket = create_test_socket("vcan_test");
-        SDOClient sdo_client(socket, dict, dict.get_node_id());
+        SDOClient sdo_client(socket, dict, 127);
 
         const int num_reads = 5;
         INFO("Performing " << num_reads << " sequential reads of statusword...");

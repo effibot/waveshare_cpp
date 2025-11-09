@@ -1,0 +1,14 @@
+{
+  "bridge_config": {
+    "socketcan_interface": "vcan0",
+    "usb_device_path": "/dev/ttyUSB0",
+    "serial_baud_rate": 2000000,
+    "can_baud_rate": 1000000,
+    "can_mode": "normal",
+    "auto_retransmit": true,
+    "filter_id": 0,
+    "filter_mask": 0,
+    "usb_read_timeout_ms": 100,
+    "socketcan_read_timeout_ms": 100
+  }
+}
