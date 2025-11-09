@@ -24,16 +24,16 @@
 namespace test_utils {
 
 /**
- * @brief Create a real CAN socket for testing
- * @param interface_name CAN interface name (default: "vcan0")
- * @param timeout_ms Receive timeout in milliseconds (default: 1000ms)
+ * @brief Create a CAN socket for testing
+ * @param interface_name CAN interface name (default: "vcan_test")
+ * @param timeout_ms Socket receive timeout in milliseconds
  * @return Shared pointer to ICANSocket (RealCANSocket implementation)
  *
  * This helper function is automatically available to all CANopen tests
  * via CMake target_include_directories configuration.
  */
     inline std::shared_ptr<waveshare::ICANSocket> create_test_socket(
-        const std::string& interface_name = "vcan0",
+        const std::string& interface_name = "vcan_test",
         int timeout_ms = 1000
     ) {
         return std::make_shared<waveshare::RealCANSocket>(interface_name, timeout_ms);
@@ -53,12 +53,12 @@ namespace test_utils {
 /**
  * @brief Mock CANopen motor responder for integration tests
  *
- * Automatically responds to SDO requests on vcan0 with realistic motor data.
+ * Automatically responds to SDO requests on vcan_test with realistic motor data.
  * Runs in background thread to simulate a real motor driver.
  */
     class MockMotorResponder {
         public:
-            explicit MockMotorResponder(uint8_t node_id, const std::string& interface = "vcan0")
+            explicit MockMotorResponder(uint8_t node_id, const std::string& interface = "vcan_test")
                 : node_id_(node_id)
                 , running_(false) {
                 try {
@@ -229,8 +229,8 @@ namespace test_utils {
  * Usage with Catch2:
  *
  * TEST_CASE_METHOD(CANopenIntegrationFixture, "My test", "[integration]") {
- *     // mock_motor is already running on vcan0
- *     auto socket = create_test_socket("vcan0");
+ *     // mock_motor is already running on vcan_test
+ *     auto socket = create_test_socket("vcan_test");
  *     auto dict = load_test_dictionary();
  *     SDOClient client(socket, dict, 1);
  *     // ... test code ...
@@ -239,7 +239,7 @@ namespace test_utils {
     class CANopenIntegrationFixture {
         protected:
             CANopenIntegrationFixture(uint8_t node_id = 1)
-                : mock_motor(node_id, "vcan0") {
+                : mock_motor(node_id, "vcan_test") {
                 if (is_vcan_available()) {
                     mock_motor.start();
                     std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Let it initialize
@@ -252,7 +252,7 @@ namespace test_utils {
 
             static bool is_vcan_available() {
                 try {
-                    auto test_socket = create_test_socket("vcan0");
+                    auto test_socket = create_test_socket("vcan_test");
                     return test_socket && test_socket->is_open();
                 } catch (...) {
                     return false;

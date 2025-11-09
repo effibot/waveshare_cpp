@@ -1,24 +1,25 @@
 /**
  * @file test_sdo_integration.cpp
- * @brief Integration tests for SDO communication with real motor driver
+ * @brief Integration tests for SDO communication with mock motor driver
  * @author effibot (andrea.efficace1@gmail.com)
  * @date 2025-11-06
  *
  * This test requires:
- * 1. vcan0 interface up: sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up
- * 2. Waveshare bridge running: ros2 launch ros2_waveshare bridge_bringup.launch.py &
- * 3. Motor driver powered (24V) and connected to USB adapter
- * 4. Motor driver configured with Node ID = 1
+ * 1. vcan_test interface up: sudo ip link add dev vcan_test type vcan && sudo ip link set vcan_test up
+ * 2. MockMotorResponder automatically started by test fixture
+ * 3. Motor config file: config/motor_config.json
+ *
+ * Note: Uses vcan_test instead of vcan0 to avoid conflicts with running bridges/motors.
  *
  * Usage:
- *   ros2 run ros2_waveshare test_sdo_integration
+ *   ./build/test/test_sdo_integration
  *
  * This test will:
  * - Read Statusword (0x6041) to check motor state
  * - Read Error Register (0x1001) to detect faults
  * - Read Mode of Operation Display (0x6061)
  * - Read Position and Velocity actual values
- * - Optionally write Mode of Operation (if not in fault)
+ * - Write Mode of Operation (0x6060)
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -48,10 +49,10 @@ std::string decode_statusword_string(uint16_t statusword) {
     State state = decode_statusword(statusword);
     return state_to_string(state);
 }/**
-  * @brief Check if vcan0 interface is available
+  * @brief Check if vcan_test interface is available
   */
-bool is_vcan0_available() {
-    return std::filesystem::exists("/sys/class/net/vcan0");
+bool is_vcan_test_available() {
+    return std::filesystem::exists("/sys/class/net/vcan_test");
 }
 
 /**
@@ -101,14 +102,14 @@ std::string get_motor_config_path() {
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Environment Check",
     "[integration][sdo]") {
-    SECTION("vcan0 interface availability") {
-        if (!is_vcan0_available()) {
+    SECTION("vcan_test interface availability") {
+        if (!is_vcan_test_available()) {
             WARN(
-                "vcan0 interface not found. Run: sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up");
+                "vcan_test interface not found. Run: sudo ip link add dev vcan0 type vcan && sudo ip link set vcan0 up");
             SKIP("vcan0 not available - skipping integration tests");
         }
-        REQUIRE(is_vcan0_available());
-        INFO("✓ vcan0 interface is available");
+        REQUIRE(is_vcan_test_available());
+        INFO("✓ vcan_test interface is available");
     }
 
     SECTION("motor_config.json availability") {
@@ -134,7 +135,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword",
         INFO("✓ Loaded motor configuration from: " << config_path);
 
         // Create SDO client
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
         INFO("✓ Connected to vcan0, Node ID: " << static_cast<int>(dict.get_node_id()));
 
@@ -165,7 +166,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Statusword",
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Register",
     "[integration][sdo][error]") {
-    if (!is_vcan0_available() || !is_motor_config_available()) {
+    if (!is_vcan_test_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
 
@@ -174,7 +175,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Registe
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
 
         // Read error register (0x1001)
@@ -206,7 +207,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Registe
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Operation",
     "[integration][sdo][mode]") {
-    if (!is_vcan0_available() || !is_motor_config_available()) {
+    if (!is_vcan_test_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
 
@@ -215,7 +216,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Opera
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
 
         // Read mode of operation display (0x6061)
@@ -253,7 +254,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Mode of Opera
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and Velocity",
     "[integration][sdo][feedback]") {
-    if (!is_vcan0_available() || !is_motor_config_available()) {
+    if (!is_vcan_test_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
 
@@ -262,7 +263,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and 
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
 
         // Read position actual value (0x6064)
@@ -285,7 +286,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Position and 
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Operation (Safe)",
     "[integration][sdo][write]") {
-    if (!is_vcan0_available() || !is_motor_config_available()) {
+    if (!is_vcan_test_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
 
@@ -294,7 +295,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Oper
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
 
         // First check if motor is in fault
@@ -329,7 +330,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Write Mode of Oper
 
 TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Multiple Sequential Reads",
     "[integration][sdo][performance]") {
-    if (!is_vcan0_available() || !is_motor_config_available()) {
+    if (!is_vcan_test_available() || !is_motor_config_available()) {
         SKIP("Prerequisites not met");
     }
 
@@ -338,7 +339,7 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Multiple Sequentia
     try {
         std::string config_path = get_motor_config_path();
         ObjectDictionary dict(config_path);
-        auto socket = create_test_socket("vcan0");
+        auto socket = create_test_socket("vcan_test");
         SDOClient sdo_client(socket, dict, dict.get_node_id());
 
         const int num_reads = 5;
