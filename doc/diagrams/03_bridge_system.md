@@ -28,8 +28,9 @@ classDiagram
         +uint32_t socketcan_read_timeout_ms
         +validate() void
         +create_default() BridgeConfig$
-        +from_env() BridgeConfig$
+        +from_json(json) BridgeConfig$
         +from_file(path) BridgeConfig$
+        +load(path?) BridgeConfig$
     }
     
     %% ===================================================================
@@ -235,11 +236,11 @@ bridge->stop();
 ### Load Configuration from File
 ```cpp
 // From JSON file
-auto config = BridgeConfig::from_file("bridge_config.json");
+auto config = BridgeConfig::from_file("config/bridge_config.json");
 auto bridge = SocketCANBridge::create(config);
 
-// From environment variables
-auto config = BridgeConfig::from_env();
+// With environment variable overrides
+auto config = BridgeConfig::load("config/bridge_config.json");
 auto bridge = SocketCANBridge::create(config);
 ```
 

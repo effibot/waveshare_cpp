@@ -2,18 +2,15 @@
  * @file bridge_config.hpp
  * @brief Configuration structure for SocketCAN bridge
  * @version 2.0
- * @date 2025-11-09
+ * @date 2025-11-10
  *
  * Supports multiple configuration sources:
- * 1. Environment variables (WAVESHARE_*)
- * 2. JSON file parsing (config/bridge_config.json)
- * 3. .env file parsing (deprecated, for backward compatibility)
- * 4. Programmatic defaults
- * 5. Direct construction
+ * 1. JSON file parsing (config/bridge_config.json) - Recommended
+ * 2. Environment variables (WAVESHARE_*)
+ * 3. Programmatic defaults
+ * 4. Direct construction
  *
- * Priority: Direct args > Env vars > JSON/env file > Defaults
- *
- * Recommended: Use JSON configuration in config/bridge_config.json
+ * Priority: Environment variables > JSON file > Defaults
  *
  * @copyright Copyright (c) 2025
  */
@@ -89,13 +86,6 @@ namespace waveshare {
         static BridgeConfig create_default();
 
         /**
-         * @brief Load configuration from environment variables
-         * @param use_defaults If true, use defaults for unset vars; if false, only use env vars
-         * @return BridgeConfig loaded from environment
-         */
-        static BridgeConfig from_env(bool use_defaults = true);
-
-        /**
          * @brief Load configuration from JSON file
          * @param filepath Path to JSON file (e.g., bridge_config.json)
          * @param use_defaults If true, merge with defaults; if false, only use JSON values
@@ -120,13 +110,6 @@ namespace waveshare {
         static BridgeConfig load(const std::optional<std::string>& config_file_path = std::nullopt);
 
         private:
-            /**
-             * @brief Parse .env file into key-value map (DEPRECATED - for backward compatibility)
-             * @param filepath Path to .env file
-             * @return Map of keys to values
-             */
-            static std::map<std::string, std::string> parse_env_file(const std::string& filepath);
-
             /**
              * @brief Apply configuration from key-value map
              * @param config Configuration to update

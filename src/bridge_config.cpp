@@ -142,51 +142,6 @@ namespace waveshare {
         return config;
     }
 
-    // === .env File Parsing (DEPRECATED - kept for backward compatibility) ===
-
-    std::map<std::string, std::string> BridgeConfig::parse_env_file(const std::string& filepath) {
-        std::map<std::string, std::string> result;
-        std::ifstream file(filepath);
-
-        if (!file.is_open()) {
-            throw std::runtime_error("Cannot open .env file: " + filepath);
-        }
-
-        std::string line;
-        while (std::getline(file, line)) {
-            // Skip empty lines and comments
-            if (line.empty() || line[0] == '#') {
-                continue;
-            }
-
-            // Find '=' separator
-            size_t eq_pos = line.find('=');
-            if (eq_pos == std::string::npos) {
-                continue;  // Skip malformed lines
-            }
-
-            std::string key = line.substr(0, eq_pos);
-            std::string value = line.substr(eq_pos + 1);
-
-            // Trim whitespace
-            key.erase(0, key.find_first_not_of(" \t\r\n"));
-            key.erase(key.find_last_not_of(" \t\r\n") + 1);
-            value.erase(0, value.find_first_not_of(" \t\r\n"));
-            value.erase(value.find_last_not_of(" \t\r\n") + 1);
-
-            // Remove quotes if present
-            if (value.size() >= 2 &&
-                ((value.front() == '"' && value.back() == '"') ||
-                (value.front() == '\'' && value.back() == '\''))) {
-                value = value.substr(1, value.size() - 2);
-            }
-
-            result[key] = value;
-        }
-
-        return result;
-    }
-
     // === Configuration Application ===
 
     void BridgeConfig::apply_config_map(BridgeConfig& config,
@@ -269,73 +224,21 @@ namespace waveshare {
 
     // === Load Methods ===
 
-    BridgeConfig BridgeConfig::from_env(bool use_defaults) {
-        BridgeConfig config = use_defaults ? create_default() : BridgeConfig{};
-
-        // Build map from environment variables
-        std::map<std::string, std::string> env_vars;
-
-        const char* val;
-        if ((val = std::getenv("WAVESHARE_SOCKETCAN_INTERFACE"))) {
-            env_vars["WAVESHARE_SOCKETCAN_INTERFACE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_USB_DEVICE"))) {
-            env_vars["WAVESHARE_USB_DEVICE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_SERIAL_BAUD"))) {
-            env_vars["WAVESHARE_SERIAL_BAUD"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_CAN_BAUD"))) {
-            env_vars["WAVESHARE_CAN_BAUD"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_CAN_MODE"))) {
-            env_vars["WAVESHARE_CAN_MODE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_AUTO_RETRANSMIT"))) {
-            env_vars["WAVESHARE_AUTO_RETRANSMIT"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_FILTER_ID"))) {
-            env_vars["WAVESHARE_FILTER_ID"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_FILTER_MASK"))) {
-            env_vars["WAVESHARE_FILTER_MASK"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_USB_READ_TIMEOUT"))) {
-            env_vars["WAVESHARE_USB_READ_TIMEOUT"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_SOCKETCAN_READ_TIMEOUT"))) {
-            env_vars["WAVESHARE_SOCKETCAN_READ_TIMEOUT"] = val;
-        }
-
-        apply_config_map(config, env_vars);
-        return config;
-    }
-
     BridgeConfig BridgeConfig::from_file(const std::string& filepath, bool use_defaults) {
         BridgeConfig config = use_defaults ? create_default() : BridgeConfig{};
 
-        // Determine file type by extension (C++17 compatible)
-        bool is_json = (filepath.size() >= 5 &&
-            filepath.substr(filepath.size() - 5) == ".json");
+        // Parse as JSON file
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            throw std::runtime_error("Cannot open JSON config file: " + filepath);
+        }
 
-        if (is_json) {
-            // Parse as JSON
-            std::ifstream file(filepath);
-            if (!file.is_open()) {
-                throw std::runtime_error("Cannot open JSON config file: " + filepath);
-            }
-
-            try {
-                json j;
-                file >> j;
-                config = from_json(j);
-            } catch (const json::exception& e) {
-                throw std::runtime_error("JSON parse error in " + filepath + ": " + e.what());
-            }
-        } else {
-            // Parse as .env file (deprecated path)
-            auto file_vars = parse_env_file(filepath);
-            apply_config_map(config, file_vars);
+        try {
+            json j;
+            file >> j;
+            config = from_json(j);
+        } catch (const json::exception& e) {
+            throw std::runtime_error("JSON parse error in " + filepath + ": " + e.what());
         }
 
         return config;
@@ -345,28 +248,18 @@ namespace waveshare {
         // Start with defaults
         BridgeConfig config = create_default();
 
-        // Apply config file if provided (JSON or .env)
+        // Apply JSON config file if provided
         if (config_file_path.has_value()) {
-            // Determine file type by extension (C++17 compatible)
-            bool is_json = (config_file_path->size() >= 5 &&
-                config_file_path->substr(config_file_path->size() - 5) == ".json");
-
-            if (is_json) {
-                std::ifstream file(*config_file_path);
-                if (file.is_open()) {
-                    try {
-                        json j;
-                        file >> j;
-                        config = from_json(j);
-                    } catch (const json::exception& e) {
-                        throw std::runtime_error("JSON parse error in " + *config_file_path + ": " +
-                            e.what());
-                    }
+            std::ifstream file(*config_file_path);
+            if (file.is_open()) {
+                try {
+                    json j;
+                    file >> j;
+                    config = from_json(j);
+                } catch (const json::exception& e) {
+                    throw std::runtime_error("JSON parse error in " + *config_file_path + ": " +
+                        e.what());
                 }
-            } else {
-                // Legacy .env file support
-                auto file_vars = parse_env_file(*config_file_path);
-                apply_config_map(config, file_vars);
             }
         }
 

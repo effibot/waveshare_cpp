@@ -178,7 +178,7 @@ Forwards CAN frames between Waveshare USB adapter and Linux SocketCAN interface.
 Raw CAN socket management with configurable read timeouts. Implements ICANSocket interface for dependency injection.
 
 **BridgeConfig** - Bridge configuration and environment management  
-Loads configuration from environment variables, .env files, or defaults. Validates all parameters before use. Supports multiple configuration sources with priority hierarchy.
+Loads configuration from JSON files or environment variables. Validates all parameters before use. Supports multiple configuration sources with priority hierarchy.
 
 ### Frame Construction
 
@@ -228,8 +228,8 @@ The library provides a high-level SocketCAN bridge that connects Waveshare USB-C
 #include "waveshare.hpp"
 using namespace waveshare;
 
-// 1. Create configuration (from .env file, environment variables, or defaults)
-auto config = BridgeConfig::load(".env");  // Loads with priority: env vars > .env > defaults
+// 1. Create configuration (from JSON file or environment variables)
+auto config = BridgeConfig::load("config/bridge_config.json");
 config.validate();  // Validate before use
 
 // 2. Create bridge (automatically opens socket and USB adapter)
@@ -247,21 +247,17 @@ if (bridge.is_socketcan_open()) {
 // Method 1: Use defaults (vcan0, /dev/ttyUSB0, 2Mbps serial, 1Mbps CAN)
 auto config = BridgeConfig::create_default();
 
-// Method 2: Load from environment variables
+// Method 2: Load from JSON file (recommended)
+// File: config/bridge_config.json
+auto config = BridgeConfig::from_file("config/bridge_config.json");
+
+// Method 3: Load from environment variables
 export WAVESHARE_SOCKETCAN_INTERFACE=can0
 export WAVESHARE_CAN_BAUD=500000
-auto config = BridgeConfig::from_env();
+auto config = BridgeConfig::load();  // Loads env vars with defaults
 
-// Method 3: Load from .env file
-// File: .env
-// WAVESHARE_SOCKETCAN_INTERFACE=can0
-// WAVESHARE_USB_DEVICE=/dev/ttyUSB0
-// WAVESHARE_SERIAL_BAUD=2000000
-// WAVESHARE_CAN_BAUD=1000000
-auto config = BridgeConfig::from_file(".env");
-
-// Method 4: Smart load with priority (env vars override .env)
-auto config = BridgeConfig::load(".env");
+// Method 4: Smart load with priority (env vars > JSON file > defaults)
+auto config = BridgeConfig::load("config/bridge_config.json");
 
 // Programmatic configuration
 config.socketcan_interface = "can0";

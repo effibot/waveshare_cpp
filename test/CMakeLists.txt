@@ -16,16 +16,6 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/config/bridge_config.json")
     message(STATUS "Copied config/bridge_config.json to build directory for tests")
 endif()
 
-# Also copy legacy .env file if it exists (for backward compatibility)
-if(EXISTS "${PROJECT_SOURCE_DIR}/.env")
-    configure_file(
-        "${PROJECT_SOURCE_DIR}/.env"
-        "${PROJECT_BINARY_DIR}/.env"
-        COPYONLY
-    )
-    message(STATUS "Copied .env file to build directory for backward compatibility")
-endif()
-
 # Find or fetch Catch2
 find_package(Catch2 3 QUIET)
 
