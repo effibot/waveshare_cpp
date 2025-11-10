@@ -2,13 +2,17 @@
 
 ## Project Overview
 
-A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Supports serial communication via `/dev/ttyUSB*` devices (Linux `ch341-uart` driver), with SocketCAN bridge fully implemented.
+A type-safe C++ library for Waveshare USB-CAN-A adapters, implementing **State-First Architecture** with CRTP patterns. Provides three major functional layers:
 
-**Current State:** Serial communication complete, SocketCAN bridge implemented with bidirectional forwarding, 132 passing tests (100%, 0.19s runtime), hardware-independent testing via dependency injection. Thread-safety analysis complete - NO DEADLOCKS POSSIBLE.
+1. **Frame Layer**: Serial protocol for USB-CAN-A devices (`/dev/ttyUSB*`, Linux `ch341-uart` driver)
+2. **Bridge Layer**: Bidirectional USB ↔ SocketCAN translation (fully implemented)
+3. **CANopen Layer**: CIA402 motor control with SDO/PDO/NMT support (✅ COMPLETE - 2025-11-10)
 
-**Error Handling:** Uses standard C++ exception-based error handling with typed exception hierarchy (WaveshareException → ProtocolException/DeviceException/TimeoutException/CANException). See README.md for details.
+**Current State:** All layers complete. 132 passing tests (100%, 0.19s runtime). Hardware-independent testing via dependency injection. Thread-safety verified - NO DEADLOCKS POSSIBLE. **CANopen implementation complete with enum-first design** - all magic numbers replaced with type-safe enums.
 
-**Thread Safety:** Three-mutex pattern in USBAdapter (state/write/read), lock-free atomics in SocketCANBridge. Comprehensive synchronization documentation in `doc/SYNCHRONIZATION.md`.
+**Error Handling:** Exception-based with typed hierarchy (WaveshareException → ProtocolException/DeviceException/TimeoutException/CANException).
+
+**Thread Safety:** Three-mutex pattern in USBAdapter (state/write/read), lock-free atomics in SocketCANBridge/PDOManager.
 
 ## Architecture Overview
 
@@ -171,35 +175,25 @@ auto frame = FrameBuilder<FixedFrame>()
 ## Future Work / Next Phase
 
 ### SocketCAN Bridge ✅ COMPLETED
-**Branch**: `socketcan` (current branch)
-- **Status**: Fully implemented and tested
-- **Features**:
-  - Bidirectional frame conversion (Waveshare ↔ SocketCAN)
-  - Configuration management (environment variables, .env files)
-  - Socket lifecycle management with proper cleanup
-  - USB adapter integration
-  - Performance statistics tracking (atomic counters)
-  - Dual-threaded forwarding (USB→CAN and CAN→USB)
-  - Lifecycle management (start/stop/destructor)
-  - Mock-based testing (no hardware required)
-- **Architecture**:
-  - `SocketCANBridge` class bridges USB adapter ↔ Linux SocketCAN
-  - `usb_to_socketcan_loop()` and `socketcan_to_usb_loop()` threads
-  - Frame conversion via `SocketCANHelper` (Waveshare frames ↔ `struct can_frame`)
-  - Dependency injection with `ISerialPort` and `ICANSocket` interfaces
-- **Testing**: 132 tests, 100% passing, 0.19s runtime (no hardware dependencies)
-- See `doc/REFACTORING_COMPLETE.md` for implementation details
+**Status**: Fully implemented and tested (see `doc/REFACTORING_COMPLETE.md`)
 
-### CANOpen Middleware (Future)
-- Translation layer between CANOpen protocol and Waveshare frames
-- SDO (Service Data Object) message handling
-- PDO (Process Data Object) message handling  
-- NMT (Network Management) operations
+### CANopen Middleware ✅ COMPLETED (2025-11-10)
+**Status**: All CANopen features implemented with enum-first design
+- ✅ SDO (Service Data Object) client with type-safe read/write
+- ✅ PDO (Process Data Object) manager with multi-motor support
+- ✅ CIA402 Finite State Machine for motor control
+- ✅ Object Dictionary with JSON configuration
+- ✅ Comprehensive enum types (no magic numbers)
+- ✅ Hardware testing script (`test_canopen_hardware.cpp`)
+- See `doc/CANOPEN_API_REFERENCE.md` for complete API documentation
 
-### ROS2 Integration (Future)
-- Lifecycle node to manage SocketCAN bridge
-- Integration with `ros2_socketcan` for CAN bus communication
-- See `prompts/04_ros2_integration.md` for planning details
+### ROS2 Integration (NEXT PHASE)
+**Status**: Planned - ready for implementation
+- ROS2 wrapper package for CANopen motor control
+- Lifecycle node integration
+- Standard ROS2 message interfaces (JointState, PID, etc.)
+- Multi-motor coordination
+- See workspace for existing partial implementation in `ros2_waveshare` package
 
 ## Important Conventions
 
@@ -300,10 +294,25 @@ Scripts in `scripts/` provide manual testing tools:
 - `include/enums/protocol.hpp` - All protocol constants (`START=0xAA`, `CANVersion`, `Format`, etc.)
 - `include/enums/error.hpp` - `Status` enum (errors like `WBAD_CHECKSUM`, `WBAD_ID`)
 
+**CANopen Layer** (✅ Complete - 2025-11-10):
+- `include/canopen/sdo_client.hpp` - SDO read/write with type-safe interface
+- `include/canopen/pdo_manager.hpp` - Multi-motor PDO management with callbacks
+- `include/canopen/cia402_fsm.hpp` - State machine for motor enable/disable/fault
+- `include/canopen/cia402_constants.hpp` - Type-safe enums (states, bits, commands)
+- `include/canopen/cia402_registers.hpp` - Register index enums (86 registers)
+- `include/canopen/pdo_constants.hpp` - PDO COB-ID enums
+- `include/canopen/object_dictionary.hpp` - JSON-based register mapping
+- `config/motor_config.json` - Object dictionary configuration
+- `scripts/test_canopen_hardware.cpp` - Complete hardware test suite
+- **See `doc/CANOPEN_API_REFERENCE.md` for complete ROS2 integration guide** ⭐
+
 **Documentation**:
 - `README.md` - Protocol details, field descriptions, CAN ID construction
+- `doc/CANOPEN_API_REFERENCE.md` - **Complete CANopen API for ROS2 wrapper development** ⭐
+- `doc/PDO_Testing_Guide.md` - PDO communication patterns and testing
+- `doc/SYNCHRONIZATION.md` - Thread-safety patterns
 - `doc/diagrams/*.md` - Mermaid diagrams (packet structure, class hierarchy)
-- `prompts/INDEX.md` - Development handoff guide, includes SocketCAN planning prompts
+- `prompts/INDEX.md` - Development handoff guide
 
 ## When Working With This Codebase
 

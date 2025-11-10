@@ -1,16 +1,16 @@
 /**
  * @file bridge_config.hpp
  * @brief Configuration structure for SocketCAN bridge
- * @version 1.0
- * @date 2025-10-14
+ * @version 2.0
+ * @date 2025-11-10
  *
  * Supports multiple configuration sources:
- * 1. Environment variables (WAVESHARE_*)
- * 2. .env file parsing
+ * 1. JSON file parsing (config/bridge_config.json) - Recommended
+ * 2. Environment variables (WAVESHARE_*)
  * 3. Programmatic defaults
  * 4. Direct construction
  *
- * Priority: Direct args > Env vars > .env file > Defaults
+ * Priority: Environment variables > JSON file > Defaults
  *
  * @copyright Copyright (c) 2025
  */
@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <optional>
 #include <map>
+
+#include <nlohmann/json.hpp>
 
 #include "../enums/protocol.hpp"
 
@@ -84,36 +86,30 @@ namespace waveshare {
         static BridgeConfig create_default();
 
         /**
-         * @brief Load configuration from environment variables
-         * @param use_defaults If true, use defaults for unset vars; if false, only use env vars
-         * @return BridgeConfig loaded from environment
-         */
-        static BridgeConfig from_env(bool use_defaults = true);
-
-        /**
-         * @brief Load configuration from .env file
-         * @param filepath Path to .env file
-         * @param use_defaults If true, use defaults for unset vars
-         * @return BridgeConfig loaded from file
-         * @throws std::runtime_error if file cannot be read
+         * @brief Load configuration from JSON file
+         * @param filepath Path to JSON file (e.g., bridge_config.json)
+         * @param use_defaults If true, merge with defaults; if false, only use JSON values
+         * @return BridgeConfig loaded from JSON file
+         * @throws std::runtime_error if file cannot be read or parsed
          */
         static BridgeConfig from_file(const std::string& filepath, bool use_defaults = true);
 
         /**
-         * @brief Load configuration with priority: env vars > .env file > defaults
-         * @param env_file_path Optional path to .env file
+         * @brief Load configuration from JSON object
+         * @param j JSON object containing bridge_config
+         * @return BridgeConfig loaded from JSON
+         * @throws std::invalid_argument if JSON is malformed
+         */
+        static BridgeConfig from_json(const nlohmann::json& j);
+
+        /**
+         * @brief Load configuration with priority: env vars > JSON file > defaults
+         * @param config_file_path Optional path to JSON config file
          * @return BridgeConfig with merged settings
          */
-        static BridgeConfig load(const std::optional<std::string>& env_file_path = std::nullopt);
+        static BridgeConfig load(const std::optional<std::string>& config_file_path = std::nullopt);
 
         private:
-            /**
-             * @brief Parse .env file into key-value map
-             * @param filepath Path to .env file
-             * @return Map of keys to values
-             */
-            static std::map<std::string, std::string> parse_env_file(const std::string& filepath);
-
             /**
              * @brief Apply configuration from key-value map
              * @param config Configuration to update

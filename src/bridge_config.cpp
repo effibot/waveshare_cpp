@@ -12,8 +12,12 @@
 #include <stdexcept>
 #include <unistd.h>
 
+#include <nlohmann/json.hpp>
+
 #include "../include/pattern/bridge_config.hpp"
 #include "../include/exception/waveshare_exception.hpp"
+
+using json = nlohmann::json;
 
 namespace waveshare {
 
@@ -83,49 +87,59 @@ namespace waveshare {
         return val ? std::string(val) : default_val;
     }
 
-    // === .env File Parsing ===
+    // === JSON File Parsing ===
 
-    std::map<std::string, std::string> BridgeConfig::parse_env_file(const std::string& filepath) {
-        std::map<std::string, std::string> result;
-        std::ifstream file(filepath);
+    BridgeConfig BridgeConfig::from_json(const json& j) {
+        BridgeConfig config = create_default();
 
-        if (!file.is_open()) {
-            throw std::runtime_error("Cannot open .env file: " + filepath);
+        // Convert JSON to string map to reuse apply_config_map logic
+        std::map<std::string, std::string> config_map;
+
+        if (j.contains("bridge_config")) {
+            const auto& bc = j["bridge_config"];
+
+            // Convert JSON fields to WAVESHARE_* format to reuse existing parsing logic
+            if (bc.contains("socketcan_interface")) {
+                config_map["WAVESHARE_SOCKETCAN_INTERFACE"] = bc["socketcan_interface"].get<std::string>();
+            }
+            if (bc.contains("usb_device_path")) {
+                config_map["WAVESHARE_USB_DEVICE"] = bc["usb_device_path"].get<std::string>();
+            }
+            if (bc.contains("serial_baud_rate")) {
+                config_map["WAVESHARE_SERIAL_BAUD"] =
+                    std::to_string(bc["serial_baud_rate"].get<int>());
+            }
+            if (bc.contains("can_baud_rate")) {
+                config_map["WAVESHARE_CAN_BAUD"] = std::to_string(bc["can_baud_rate"].get<int>());
+            }
+            if (bc.contains("can_mode")) {
+                config_map["WAVESHARE_CAN_MODE"] = bc["can_mode"].get<std::string>();
+            }
+            if (bc.contains("auto_retransmit")) {
+                config_map["WAVESHARE_AUTO_RETRANSMIT"] =
+                    bc["auto_retransmit"].get<bool>() ? "true" : "false";
+            }
+            if (bc.contains("filter_id")) {
+                config_map["WAVESHARE_FILTER_ID"] = std::to_string(bc["filter_id"].get<uint32_t>());
+            }
+            if (bc.contains("filter_mask")) {
+                config_map["WAVESHARE_FILTER_MASK"] =
+                    std::to_string(bc["filter_mask"].get<uint32_t>());
+            }
+            if (bc.contains("usb_read_timeout_ms")) {
+                config_map["WAVESHARE_USB_READ_TIMEOUT"] =
+                    std::to_string(bc["usb_read_timeout_ms"].get<uint32_t>());
+            }
+            if (bc.contains("socketcan_read_timeout_ms")) {
+                config_map["WAVESHARE_SOCKETCAN_READ_TIMEOUT"] =
+                    std::to_string(bc["socketcan_read_timeout_ms"].get<uint32_t>());
+            }
         }
 
-        std::string line;
-        while (std::getline(file, line)) {
-            // Skip empty lines and comments
-            if (line.empty() || line[0] == '#') {
-                continue;
-            }
+        // Reuse existing parsing logic
+        apply_config_map(config, config_map);
 
-            // Find '=' separator
-            size_t eq_pos = line.find('=');
-            if (eq_pos == std::string::npos) {
-                continue;  // Skip malformed lines
-            }
-
-            std::string key = line.substr(0, eq_pos);
-            std::string value = line.substr(eq_pos + 1);
-
-            // Trim whitespace
-            key.erase(0, key.find_first_not_of(" \t\r\n"));
-            key.erase(key.find_last_not_of(" \t\r\n") + 1);
-            value.erase(0, value.find_first_not_of(" \t\r\n"));
-            value.erase(value.find_last_not_of(" \t\r\n") + 1);
-
-            // Remove quotes if present
-            if (value.size() >= 2 &&
-                ((value.front() == '"' && value.back() == '"') ||
-                (value.front() == '\'' && value.back() == '\''))) {
-                value = value.substr(1, value.size() - 2);
-            }
-
-            result[key] = value;
-        }
-
-        return result;
+        return config;
     }
 
     // === Configuration Application ===
@@ -152,15 +166,9 @@ namespace waveshare {
         // Apply serial baud rate
         if (auto val = get_val("WAVESHARE_SERIAL_BAUD")) {
             int baud = std::stoi(*val);
-            switch (baud) {
-            case 9600:    config.serial_baud_rate = SerialBaud::BAUD_9600; break;
-            case 19200:   config.serial_baud_rate = SerialBaud::BAUD_19200; break;
-            case 38400:   config.serial_baud_rate = SerialBaud::BAUD_38400; break;
-            case 57600:   config.serial_baud_rate = SerialBaud::BAUD_57600; break;
-            case 115200:  config.serial_baud_rate = SerialBaud::BAUD_115200; break;
-            case 153600:  config.serial_baud_rate = SerialBaud::BAUD_153600; break;
-            case 2000000: config.serial_baud_rate = SerialBaud::BAUD_2M; break;
-            default:
+            bool use_default = false;
+            config.serial_baud_rate = serialbaud_from_int(baud, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid serial baud rate: " + *val);
             }
         }
@@ -168,20 +176,9 @@ namespace waveshare {
         // Apply CAN baud rate
         if (auto val = get_val("WAVESHARE_CAN_BAUD")) {
             int baud = std::stoi(*val);
-            switch (baud) {
-            case 5000:    config.can_baud_rate = CANBaud::BAUD_5K; break;
-            case 10000:   config.can_baud_rate = CANBaud::BAUD_10K; break;
-            case 20000:   config.can_baud_rate = CANBaud::BAUD_20K; break;
-            case 50000:   config.can_baud_rate = CANBaud::BAUD_50K; break;
-            case 100000:  config.can_baud_rate = CANBaud::BAUD_100K; break;
-            case 125000:  config.can_baud_rate = CANBaud::BAUD_125K; break;
-            case 200000:  config.can_baud_rate = CANBaud::BAUD_200K; break;
-            case 250000:  config.can_baud_rate = CANBaud::BAUD_250K; break;
-            case 400000:  config.can_baud_rate = CANBaud::BAUD_400K; break;
-            case 500000:  config.can_baud_rate = CANBaud::BAUD_500K; break;
-            case 800000:  config.can_baud_rate = CANBaud::BAUD_800K; break;
-            case 1000000: config.can_baud_rate = CANBaud::BAUD_1M; break;
-            default:
+            bool use_default = false;
+            config.can_baud_rate = canbaud_from_int(baud, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid CAN baud rate: " + *val);
             }
         }
@@ -191,17 +188,12 @@ namespace waveshare {
             std::string mode = *val;
             // Convert to lowercase for case-insensitive comparison
             std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
+            // Replace dash with underscore for consistency (loopback-silent -> loopback_silent)
+            std::replace(mode.begin(), mode.end(), '-', '_');
 
-            if (mode == "normal") {
-                config.can_mode = CANMode::NORMAL;
-            } else if (mode == "loopback") {
-                config.can_mode = CANMode::LOOPBACK;
-            } else if (mode == "silent") {
-                config.can_mode = CANMode::SILENT;
-            } else if (mode == "loopback-silent" || mode == "loopback_silent" ||
-                mode == "silent-loopback" || mode == "silent_loopback") {
-                config.can_mode = CANMode::LOOPBACK_SILENT;
-            } else {
+            bool use_default = false;
+            config.can_mode = canmode_from_string(mode, use_default);
+            if (use_default) {
                 throw std::invalid_argument("Invalid CAN mode: " + *val);
             }
         }
@@ -232,65 +224,43 @@ namespace waveshare {
 
     // === Load Methods ===
 
-    BridgeConfig BridgeConfig::from_env(bool use_defaults) {
-        BridgeConfig config = use_defaults ? create_default() : BridgeConfig{};
-
-        // Build map from environment variables
-        std::map<std::string, std::string> env_vars;
-
-        const char* val;
-        if ((val = std::getenv("WAVESHARE_SOCKETCAN_INTERFACE"))) {
-            env_vars["WAVESHARE_SOCKETCAN_INTERFACE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_USB_DEVICE"))) {
-            env_vars["WAVESHARE_USB_DEVICE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_SERIAL_BAUD"))) {
-            env_vars["WAVESHARE_SERIAL_BAUD"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_CAN_BAUD"))) {
-            env_vars["WAVESHARE_CAN_BAUD"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_CAN_MODE"))) {
-            env_vars["WAVESHARE_CAN_MODE"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_AUTO_RETRANSMIT"))) {
-            env_vars["WAVESHARE_AUTO_RETRANSMIT"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_FILTER_ID"))) {
-            env_vars["WAVESHARE_FILTER_ID"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_FILTER_MASK"))) {
-            env_vars["WAVESHARE_FILTER_MASK"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_USB_READ_TIMEOUT"))) {
-            env_vars["WAVESHARE_USB_READ_TIMEOUT"] = val;
-        }
-        if ((val = std::getenv("WAVESHARE_SOCKETCAN_READ_TIMEOUT"))) {
-            env_vars["WAVESHARE_SOCKETCAN_READ_TIMEOUT"] = val;
-        }
-
-        apply_config_map(config, env_vars);
-        return config;
-    }
-
     BridgeConfig BridgeConfig::from_file(const std::string& filepath, bool use_defaults) {
         BridgeConfig config = use_defaults ? create_default() : BridgeConfig{};
 
-        auto file_vars = parse_env_file(filepath);
-        apply_config_map(config, file_vars);
+        // Parse as JSON file
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            throw std::runtime_error("Cannot open JSON config file: " + filepath);
+        }
+
+        try {
+            json j;
+            file >> j;
+            config = from_json(j);
+        } catch (const json::exception& e) {
+            throw std::runtime_error("JSON parse error in " + filepath + ": " + e.what());
+        }
 
         return config;
     }
 
-    BridgeConfig BridgeConfig::load(const std::optional<std::string>& env_file_path) {
+    BridgeConfig BridgeConfig::load(const std::optional<std::string>& config_file_path) {
         // Start with defaults
         BridgeConfig config = create_default();
 
-        // Apply .env file if provided
-        if (env_file_path.has_value()) {
-            auto file_vars = parse_env_file(*env_file_path);
-            apply_config_map(config, file_vars);
+        // Apply JSON config file if provided
+        if (config_file_path.has_value()) {
+            std::ifstream file(*config_file_path);
+            if (file.is_open()) {
+                try {
+                    json j;
+                    file >> j;
+                    config = from_json(j);
+                } catch (const json::exception& e) {
+                    throw std::runtime_error("JSON parse error in " + *config_file_path + ": " +
+                        e.what());
+                }
+            }
         }
 
         // Apply environment variables (highest priority)

@@ -1,0 +1,250 @@
+{
+  "node_id": 1,
+  "device_name": "traction_motor_left",
+  "eds_file": "TRACTION_PWR.eds",
+  "can_interface": "vcan0",
+  "objects": {
+    "controlword": {
+      "index": "0x6040",
+      "subindex": 0,
+      "datatype": "uint16_t",
+      "access": "rw",
+      "pdo_mapping": "rpdo1"
+    },
+    "statusword": {
+      "index": "0x6041",
+      "subindex": 0,
+      "datatype": "uint16_t",
+      "access": "ro",
+      "pdo_mapping": "tpdo1"
+    },
+    "modes_of_operation": {
+      "index": "0x6060",
+      "subindex": 0,
+      "datatype": "int8_t",
+      "access": "rw",
+      "default_value": 3,
+      "comment": "3 = Profile Velocity Mode"
+    },
+    "target_velocity": {
+      "index": "0x60FF",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "rw",
+      "pdo_mapping": "rpdo2",
+      "unit": "rpm",
+      "scaling_factor": 1.0
+    },
+    "velocity_actual": {
+      "index": "0x606C",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "ro",
+      "pdo_mapping": "tpdo2",
+      "unit": "rpm"
+    },
+    "position_actual": {
+      "index": "0x6064",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "ro",
+      "pdo_mapping": "tpdo1",
+      "unit": "counts"
+    },
+    "error_register": {
+      "index": "0x1001",
+      "subindex": 0,
+      "datatype": "uint8_t",
+      "access": "ro",
+      "description": "Generic error register (bit field)"
+    },
+    "modes_of_operation_display": {
+      "index": "0x6061",
+      "subindex": 0,
+      "datatype": "int8_t",
+      "access": "ro",
+      "description": "Currently active mode"
+    },
+    "max_current": {
+      "index": "0x6073",
+      "subindex": 0,
+      "datatype": "uint16_t",
+      "access": "rw",
+      "default_value": 1000,
+      "unit": "mA",
+      "description": "Maximum motor current limit"
+    },
+    "target_position": {
+      "index": "0x607A",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "rw",
+      "unit": "counts",
+      "description": "Target position for Profile Position mode"
+    },
+    "position_demand": {
+      "index": "0x6062",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "ro",
+      "unit": "counts",
+      "description": "Position demand value"
+    },
+    "velocity_demand": {
+      "index": "0x6043",
+      "subindex": 0,
+      "datatype": "int32_t",
+      "access": "ro",
+      "unit": "rpm",
+      "description": "Velocity demand value"
+    },
+    "torque_actual": {
+      "index": "0x6077",
+      "subindex": 0,
+      "datatype": "int16_t",
+      "access": "ro",
+      "unit": "per_mille",
+      "description": "Actual torque (per mille of rated torque)"
+    },
+    "target_torque": {
+      "index": "0x6071",
+      "subindex": 0,
+      "datatype": "int16_t",
+      "access": "rw",
+      "unit": "per_mille",
+      "description": "Target torque (per mille of rated torque)"
+    },
+    "motor_rated_current": {
+      "index": "0x6075",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "mA",
+      "description": "Motor rated current"
+    },
+    "motor_rated_torque": {
+      "index": "0x6076",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "mNm",
+      "description": "Motor rated torque"
+    },
+    "max_motor_speed": {
+      "index": "0x6080",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "rpm",
+      "description": "Maximum motor speed"
+    },
+    "profile_velocity": {
+      "index": "0x6081",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "rpm",
+      "description": "Target velocity for profile mode"
+    },
+    "profile_acceleration": {
+      "index": "0x6083",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "rpm_per_sec",
+      "description": "Acceleration rate"
+    },
+    "profile_deceleration": {
+      "index": "0x6084",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "rpm_per_sec",
+      "description": "Deceleration rate"
+    },
+    "quick_stop_deceleration": {
+      "index": "0x6085",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "unit": "rpm_per_sec",
+      "description": "Quick stop deceleration rate"
+    },
+    "digital_inputs": {
+      "index": "0x60FD",
+      "subindex": 0,
+      "datatype": "uint32_t",
+      "access": "ro",
+      "description": "Digital input states (bit field)"
+    },
+    "digital_outputs": {
+      "index": "0x60FE",
+      "subindex": 1,
+      "datatype": "uint32_t",
+      "access": "rw",
+      "description": "Digital output states (bit field)"
+    },
+    "temperature": {
+      "index": "0x2205",
+      "subindex": 1,
+      "datatype": "int16_t",
+      "access": "ro",
+      "unit": "celsius",
+      "description": "Driver/motor temperature"
+    }
+  },
+  "pdo_configuration": {
+    "rpdo1": {
+      "cob_id": "0x200",
+      "transmission_type": 1,
+      "objects": [
+        "controlword"
+      ]
+    },
+    "rpdo2": {
+      "cob_id": "0x300",
+      "transmission_type": 1,
+      "objects": [
+        "target_velocity"
+      ]
+    },
+    "tpdo1": {
+      "cob_id": "0x180",
+      "transmission_type": 1,
+      "inhibit_time_us": 10000,
+      "objects": [
+        "statusword",
+        "position_actual"
+      ]
+    },
+    "tpdo2": {
+      "cob_id": "0x280",
+      "transmission_type": 1,
+      "objects": [
+        "velocity_actual"
+      ]
+    }
+  },
+  "motor_parameters": {
+    "max_rpm": 3000,
+    "encoder_resolution": 2048,
+    "gear_ratio": 1.0,
+    "wheel_radius_m": 0.1,
+    "wheel_base_m": 0.5,
+    "counts_per_revolution": 2048,
+    "rpm_to_rad_per_sec": 0.104719755,
+    "rated_current_a": 10.0,
+    "peak_current_a": 20.0
+  },
+  "safety_limits": {
+    "max_safe_rpm": 500,
+    "max_acceleration_rpm_per_s": 1000,
+    "watchdog_timeout_ms": 500,
+    "emergency_stop_deceleration_rpm_per_s": 2000
+  },
+  "communication_parameters": {
+    "sdo_timeout_ms": 1000,
+    "sdo_retry_count": 3,
+    "heartbeat_producer_ms": 1000
+  }
+}
