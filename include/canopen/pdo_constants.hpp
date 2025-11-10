@@ -29,84 +29,110 @@ namespace canopen {
 // =============================================================================
 
 /**
- * @brief Standard CANopen PDO COB-ID base addresses
+ * @brief Standard CANopen PDO and SYNC COB-ID base addresses (Type-Safe Enum)
  *
  * CANopen uses predefined COB-ID ranges for PDO communication:
  * - COB-ID = BASE + node_id (where node_id is 1-127)
+ * - SYNC uses fixed COB-ID 0x080 (no node_id offset)
  *
  * Example for node_id = 1:
  * - RPDO1: 0x200 + 1 = 0x201
  * - RPDO2: 0x300 + 1 = 0x301
  * - TPDO1: 0x180 + 1 = 0x181
  * - TPDO2: 0x280 + 1 = 0x281
+ * - SYNC: 0x080 (fixed, no node_id)
  */
-        namespace cob_id {
+        enum class PDOCobIDBase : uint16_t {
             /**
-             * @brief RPDO1 base COB-ID (Receive PDO 1 - commands FROM host TO motor)
+             * @brief SYNC message COB-ID (0x080)
              *
-             * Typical mapping for CIA402 drives:
-             * - Byte 0-1: Controlword (0x6040)
-             * - Byte 2-5: Target Position (0x607A) or Target Velocity (0x60FF)
-             */
-            constexpr uint32_t RPDO1_BASE = 0x200;
-
-            /**
-             * @brief RPDO2 base COB-ID (Receive PDO 2 - additional commands)
+             * Used to synchronize PDO transmission across multiple nodes.
+             * SYNC messages trigger TPDO transmission on motors configured
+             * for synchronous operation.
              *
-             * Typical mapping for CIA402 drives:
-             * - Byte 0-3: Profile Velocity (0x6081)
-             * - Byte 4-7: Profile Acceleration (0x6083)
+             * @note SYNC COB-ID is fixed and does NOT include node_id
              */
-            constexpr uint32_t RPDO2_BASE = 0x300;
+            SYNC = 0x080,
 
             /**
-             * @brief RPDO3 base COB-ID (Receive PDO 3)
-             */
-            constexpr uint32_t RPDO3_BASE = 0x400;
-
-            /**
-             * @brief RPDO4 base COB-ID (Receive PDO 4)
-             */
-            constexpr uint32_t RPDO4_BASE = 0x500;
-
-            /**
-             * @brief TPDO1 base COB-ID (Transmit PDO 1 - feedback FROM motor TO host)
+             * @brief TPDO1 base COB-ID (0x180)
              *
-             * Typical mapping for CIA402 drives:
+             * Transmit PDO 1 - feedback FROM motor TO host
+             * Typical CIA402 mapping:
              * - Byte 0-1: Statusword (0x6041)
              * - Byte 2-5: Position Actual Value (0x6064)
              */
-            constexpr uint32_t TPDO1_BASE = 0x180;
+            TPDO1 = 0x180,
 
             /**
-             * @brief TPDO2 base COB-ID (Transmit PDO 2 - additional feedback)
+             * @brief RPDO1 base COB-ID (0x200)
              *
-             * Typical mapping for CIA402 drives:
+             * Receive PDO 1 - commands FROM host TO motor
+             * Typical CIA402 mapping:
+             * - Byte 0-1: Controlword (0x6040)
+             * - Byte 2-5: Target Position (0x607A) or Target Velocity (0x60FF)
+             */
+            RPDO1 = 0x200,
+
+            /**
+             * @brief TPDO2 base COB-ID (0x280)
+             *
+             * Transmit PDO 2 - additional feedback FROM motor TO host
+             * Typical CIA402 mapping:
              * - Byte 0-3: Velocity Actual Value (0x606C)
              * - Byte 4-5: Current Actual Value (0x6078)
              */
-            constexpr uint32_t TPDO2_BASE = 0x280;
+            TPDO2 = 0x280,
 
             /**
-             * @brief TPDO3 base COB-ID (Transmit PDO 3)
+             * @brief RPDO2 base COB-ID (0x300)
+             *
+             * Receive PDO 2 - additional commands FROM host TO motor
+             * Typical CIA402 mapping:
+             * - Byte 0-3: Profile Velocity (0x6081)
+             * - Byte 4-7: Profile Acceleration (0x6083)
              */
-            constexpr uint32_t TPDO3_BASE = 0x380;
+            RPDO2 = 0x300,
 
             /**
-             * @brief TPDO4 base COB-ID (Transmit PDO 4)
+             * @brief TPDO3 base COB-ID (0x380)
              */
-            constexpr uint32_t TPDO4_BASE = 0x480;
+            TPDO3 = 0x380,
 
             /**
-             * @brief Maximum valid node ID in CANopen
+             * @brief RPDO3 base COB-ID (0x400)
              */
-            constexpr uint8_t MAX_NODE_ID = 127;
+            RPDO3 = 0x400,
 
             /**
-             * @brief Minimum valid node ID in CANopen
+             * @brief TPDO4 base COB-ID (0x480)
              */
-            constexpr uint8_t MIN_NODE_ID = 1;
-        } // namespace cob_id
+            TPDO4 = 0x480,
+
+            /**
+             * @brief RPDO4 base COB-ID (0x500)
+             */
+            RPDO4 = 0x500,
+        };
+
+        /**
+         * @brief Convert PDOCobIDBase enum to uint16_t
+         * @param base The COB-ID base enum value
+         * @return uint16_t The COB-ID base value
+         */
+        constexpr uint16_t to_cob_base(PDOCobIDBase base) {
+            return static_cast<uint16_t>(base);
+        }
+
+        /**
+         * @brief Maximum valid node ID in CANopen
+         */
+        constexpr uint8_t MAX_NODE_ID = 127;
+
+        /**
+         * @brief Minimum valid node ID in CANopen
+         */
+        constexpr uint8_t MIN_NODE_ID = 1;
 
 // =============================================================================
 // PDO Types
@@ -178,19 +204,19 @@ namespace canopen {
  * @throws std::invalid_argument if node_id is out of range
  */
         inline uint32_t calculate_cob_id(PDOType type, uint8_t node_id) {
-            if (node_id < cob_id::MIN_NODE_ID || node_id > cob_id::MAX_NODE_ID) {
+            if (node_id < MIN_NODE_ID || node_id > MAX_NODE_ID) {
                 throw std::invalid_argument("Node ID must be between 1 and 127");
             }
 
             switch (type) {
-            case PDOType::RPDO1: return cob_id::RPDO1_BASE + node_id;
-            case PDOType::RPDO2: return cob_id::RPDO2_BASE + node_id;
-            case PDOType::RPDO3: return cob_id::RPDO3_BASE + node_id;
-            case PDOType::RPDO4: return cob_id::RPDO4_BASE + node_id;
-            case PDOType::TPDO1: return cob_id::TPDO1_BASE + node_id;
-            case PDOType::TPDO2: return cob_id::TPDO2_BASE + node_id;
-            case PDOType::TPDO3: return cob_id::TPDO3_BASE + node_id;
-            case PDOType::TPDO4: return cob_id::TPDO4_BASE + node_id;
+            case PDOType::RPDO1: return to_cob_base(PDOCobIDBase::RPDO1) + node_id;
+            case PDOType::RPDO2: return to_cob_base(PDOCobIDBase::RPDO2) + node_id;
+            case PDOType::RPDO3: return to_cob_base(PDOCobIDBase::RPDO3) + node_id;
+            case PDOType::RPDO4: return to_cob_base(PDOCobIDBase::RPDO4) + node_id;
+            case PDOType::TPDO1: return to_cob_base(PDOCobIDBase::TPDO1) + node_id;
+            case PDOType::TPDO2: return to_cob_base(PDOCobIDBase::TPDO2) + node_id;
+            case PDOType::TPDO3: return to_cob_base(PDOCobIDBase::TPDO3) + node_id;
+            case PDOType::TPDO4: return to_cob_base(PDOCobIDBase::TPDO4) + node_id;
             default:
                 throw std::invalid_argument("Invalid PDO type");
             }
@@ -203,43 +229,50 @@ namespace canopen {
  */
         inline uint8_t extract_node_id(uint32_t cob_id) {
             // TPDO1: 0x180 + node_id
-            if (cob_id >= cob_id::TPDO1_BASE && cob_id < cob_id::RPDO1_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::TPDO1_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO1) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO1)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::TPDO1));
             }
 
             // RPDO1: 0x200 + node_id
-            if (cob_id >= cob_id::RPDO1_BASE && cob_id < cob_id::TPDO2_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::RPDO1_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO1) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO2)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::RPDO1));
             }
 
             // TPDO2: 0x280 + node_id
-            if (cob_id >= cob_id::TPDO2_BASE && cob_id < cob_id::RPDO2_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::TPDO2_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO2) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO2)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::TPDO2));
             }
 
             // RPDO2: 0x300 + node_id
-            if (cob_id >= cob_id::RPDO2_BASE && cob_id < cob_id::TPDO3_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::RPDO2_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO2) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO3)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::RPDO2));
             }
 
             // TPDO3: 0x380 + node_id
-            if (cob_id >= cob_id::TPDO3_BASE && cob_id < cob_id::RPDO3_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::TPDO3_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO3) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO3)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::TPDO3));
             }
 
             // RPDO3: 0x400 + node_id
-            if (cob_id >= cob_id::RPDO3_BASE && cob_id < cob_id::TPDO4_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::RPDO3_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO3) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO4)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::RPDO3));
             }
 
             // TPDO4: 0x480 + node_id
-            if (cob_id >= cob_id::TPDO4_BASE && cob_id < cob_id::RPDO4_BASE) {
-                return static_cast<uint8_t>(cob_id - cob_id::TPDO4_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO4) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO4)) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::TPDO4));
             }
 
             // RPDO4: 0x500 + node_id
-            if (cob_id >= cob_id::RPDO4_BASE && cob_id < 0x580) {
-                return static_cast<uint8_t>(cob_id - cob_id::RPDO4_BASE);
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO4) && cob_id < 0x580) {
+                return static_cast<uint8_t>(cob_id - to_cob_base(PDOCobIDBase::RPDO4));
             }
 
             return 0; // Invalid COB-ID
@@ -253,35 +286,42 @@ namespace canopen {
         inline PDOType* get_pdo_type(uint32_t cob_id) {
             static PDOType type;
 
-            if (cob_id >= cob_id::TPDO1_BASE && cob_id < cob_id::RPDO1_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO1) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO1)) {
                 type = PDOType::TPDO1;
                 return &type;
             }
-            if (cob_id >= cob_id::RPDO1_BASE && cob_id < cob_id::TPDO2_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO1) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO2)) {
                 type = PDOType::RPDO1;
                 return &type;
             }
-            if (cob_id >= cob_id::TPDO2_BASE && cob_id < cob_id::RPDO2_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO2) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO2)) {
                 type = PDOType::TPDO2;
                 return &type;
             }
-            if (cob_id >= cob_id::RPDO2_BASE && cob_id < cob_id::TPDO3_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO2) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO3)) {
                 type = PDOType::RPDO2;
                 return &type;
             }
-            if (cob_id >= cob_id::TPDO3_BASE && cob_id < cob_id::RPDO3_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO3) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO3)) {
                 type = PDOType::TPDO3;
                 return &type;
             }
-            if (cob_id >= cob_id::RPDO3_BASE && cob_id < cob_id::TPDO4_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO3) &&
+                cob_id < to_cob_base(PDOCobIDBase::TPDO4)) {
                 type = PDOType::RPDO3;
                 return &type;
             }
-            if (cob_id >= cob_id::TPDO4_BASE && cob_id < cob_id::RPDO4_BASE) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::TPDO4) &&
+                cob_id < to_cob_base(PDOCobIDBase::RPDO4)) {
                 type = PDOType::TPDO4;
                 return &type;
             }
-            if (cob_id >= cob_id::RPDO4_BASE && cob_id < 0x580) {
+            if (cob_id >= to_cob_base(PDOCobIDBase::RPDO4) && cob_id < 0x580) {
                 type = PDOType::RPDO4;
                 return &type;
             }

@@ -67,7 +67,7 @@ namespace canopen {
         // Shutdown: Transition to READY_TO_SWITCH_ON
         if (current_state_ == cia402::State::SWITCH_ON_DISABLED) {
             std::cout << "[CIA402] Sending Shutdown command (0x06)..." << std::endl;
-            if (!send_controlword(cia402::CW_SHUTDOWN)) {
+            if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::SHUTDOWN))) {
                 std::cerr << "[CIA402] Failed to send shutdown command" << std::endl;
                 return false;
             }
@@ -82,7 +82,7 @@ namespace canopen {
         // Switch On: Transition to SWITCHED_ON
         if (current_state_ == cia402::State::READY_TO_SWITCH_ON) {
             std::cout << "[CIA402] Sending Switch On command (0x07)..." << std::endl;
-            if (!send_controlword(cia402::CW_SWITCH_ON)) {
+            if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::SWITCH_ON))) {
                 std::cerr << "[CIA402] Failed to send switch on command" << std::endl;
                 return false;
             }
@@ -97,7 +97,8 @@ namespace canopen {
         // Enable Operation: Transition to OPERATION_ENABLED
         if (current_state_ == cia402::State::SWITCHED_ON) {
             std::cout << "[CIA402] Sending Enable Operation command (0x0F)..." << std::endl;
-            if (!send_controlword(cia402::CW_ENABLE_OPERATION)) {
+            if (!send_controlword(cia402::to_command(
+                cia402::ControlwordCommand::ENABLE_OPERATION))) {
                 std::cerr << "[CIA402] Failed to send enable operation command" << std::endl;
                 return false;
             }
@@ -124,7 +125,7 @@ namespace canopen {
         }
 
         // Send disable operation command (switch back to SWITCHED_ON)
-        if (!send_controlword(cia402::CW_DISABLE_OPERATION)) {
+        if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::DISABLE_OPERATION))) {
             std::cerr << "[CIA402] Failed to send disable operation command" << std::endl;
             return false;
         }
@@ -141,7 +142,7 @@ namespace canopen {
     bool CIA402FSM::quick_stop() {
         std::cout << "[CIA402] Executing quick stop..." << std::endl;
 
-        if (!send_controlword(cia402::CW_QUICK_STOP)) {
+        if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::QUICK_STOP))) {
             std::cerr << "[CIA402] Failed to send quick stop command" << std::endl;
             return false;
         }
@@ -174,7 +175,7 @@ namespace canopen {
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-        if (!send_controlword(cia402::CW_FAULT_RESET)) {
+        if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::FAULT_RESET))) {
             std::cerr << "[CIA402] Failed to send fault reset command" << std::endl;
             return false;
         }
@@ -193,7 +194,7 @@ namespace canopen {
     bool CIA402FSM::shutdown() {
         std::cout << "[CIA402] Executing shutdown..." << std::endl;
 
-        if (!send_controlword(cia402::CW_SHUTDOWN)) {
+        if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::SHUTDOWN))) {
             std::cerr << "[CIA402] Failed to send shutdown command" << std::endl;
             return false;
         }
@@ -217,7 +218,7 @@ namespace canopen {
             return false;
         }
 
-        if (!send_controlword(cia402::CW_SWITCH_ON)) {
+        if (!send_controlword(cia402::to_command(cia402::ControlwordCommand::SWITCH_ON))) {
             std::cerr << "[CIA402] Failed to send switch on command" << std::endl;
             return false;
         }

@@ -37,30 +37,30 @@ namespace {
 TEST_CASE("PDOManager: COB-ID calculation", "[pdo_manager][cob_id]") {
     SECTION("RPDO1 COB-ID") {
         // RPDO1 base = 0x200
-        REQUIRE(0x201 == cob_id::RPDO1_BASE + 1);  // Node 1
-        REQUIRE(0x202 == cob_id::RPDO1_BASE + 2);  // Node 2
-        REQUIRE(0x204 == cob_id::RPDO1_BASE + 4);  // Node 4
+        REQUIRE(0x201 == to_cob_base(PDOCobIDBase::RPDO1) + 1);  // Node 1
+        REQUIRE(0x202 == to_cob_base(PDOCobIDBase::RPDO1) + 2);  // Node 2
+        REQUIRE(0x204 == to_cob_base(PDOCobIDBase::RPDO1) + 4);  // Node 4
     }
 
     SECTION("RPDO2 COB-ID") {
         // RPDO2 base = 0x300
-        REQUIRE(0x301 == cob_id::RPDO2_BASE + 1);  // Node 1
-        REQUIRE(0x302 == cob_id::RPDO2_BASE + 2);  // Node 2
-        REQUIRE(0x304 == cob_id::RPDO2_BASE + 4);  // Node 4
+        REQUIRE(0x301 == to_cob_base(PDOCobIDBase::RPDO2) + 1);  // Node 1
+        REQUIRE(0x302 == to_cob_base(PDOCobIDBase::RPDO2) + 2);  // Node 2
+        REQUIRE(0x304 == to_cob_base(PDOCobIDBase::RPDO2) + 4);  // Node 4
     }
 
     SECTION("TPDO1 COB-ID") {
         // TPDO1 base = 0x180
-        REQUIRE(0x181 == cob_id::TPDO1_BASE + 1);  // Node 1
-        REQUIRE(0x182 == cob_id::TPDO1_BASE + 2);  // Node 2
-        REQUIRE(0x184 == cob_id::TPDO1_BASE + 4);  // Node 4
+        REQUIRE(0x181 == to_cob_base(PDOCobIDBase::TPDO1) + 1);  // Node 1
+        REQUIRE(0x182 == to_cob_base(PDOCobIDBase::TPDO1) + 2);  // Node 2
+        REQUIRE(0x184 == to_cob_base(PDOCobIDBase::TPDO1) + 4);  // Node 4
     }
 
     SECTION("TPDO2 COB-ID") {
         // TPDO2 base = 0x280
-        REQUIRE(0x281 == cob_id::TPDO2_BASE + 1);  // Node 1
-        REQUIRE(0x282 == cob_id::TPDO2_BASE + 2);  // Node 2
-        REQUIRE(0x284 == cob_id::TPDO2_BASE + 4);  // Node 4
+        REQUIRE(0x281 == to_cob_base(PDOCobIDBase::TPDO2) + 1);  // Node 1
+        REQUIRE(0x282 == to_cob_base(PDOCobIDBase::TPDO2) + 2);  // Node 2
+        REQUIRE(0x284 == to_cob_base(PDOCobIDBase::TPDO2) + 4);  // Node 4
     }
 
     SECTION("COB-ID calculation helper function") {

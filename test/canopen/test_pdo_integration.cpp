@@ -117,7 +117,7 @@ class PDOMockMotor {
         void send_tpdo1() {
             struct can_frame frame;
             std::memset(&frame, 0, sizeof(frame));
-            frame.can_id = cob_id::TPDO1_BASE + node_id_;
+            frame.can_id = to_cob_base(PDOCobIDBase::TPDO1) + node_id_;
             frame.can_dlc = 8;
 
             // TPDO1: Statusword (2 bytes) + Position Actual (4 bytes)
@@ -141,7 +141,7 @@ class PDOMockMotor {
         void send_tpdo2() {
             struct can_frame frame;
             std::memset(&frame, 0, sizeof(frame));
-            frame.can_id = cob_id::TPDO2_BASE + node_id_;
+            frame.can_id = to_cob_base(PDOCobIDBase::TPDO2) + node_id_;
             frame.can_dlc = 8;
 
             // TPDO2: Velocity Actual (4 bytes) + Current Actual (2 bytes)
@@ -165,8 +165,8 @@ class PDOMockMotor {
     private:
         void pdo_loop() {
             struct can_frame rx_frame;
-            const uint32_t rpdo1_cob = cob_id::RPDO1_BASE + node_id_;
-            const uint32_t rpdo2_cob = cob_id::RPDO2_BASE + node_id_;
+            const uint32_t rpdo1_cob = to_cob_base(PDOCobIDBase::RPDO1) + node_id_;
+            const uint32_t rpdo2_cob = to_cob_base(PDOCobIDBase::RPDO2) + node_id_;
             const uint32_t sync_cob = 0x80; // SYNC message
 
             while (running_.load()) {
@@ -605,10 +605,10 @@ TEST_CASE("PDO Integration: COB-ID Calculation", "[integration][pdo][cob_id]") {
     // Test standard COB-ID calculations for node 127
     uint8_t node_id = 127;
 
-    uint32_t rpdo1_cob = cob_id::RPDO1_BASE + node_id;
-    uint32_t rpdo2_cob = cob_id::RPDO2_BASE + node_id;
-    uint32_t tpdo1_cob = cob_id::TPDO1_BASE + node_id;
-    uint32_t tpdo2_cob = cob_id::TPDO2_BASE + node_id;
+    uint32_t rpdo1_cob = to_cob_base(PDOCobIDBase::RPDO1) + node_id;
+    uint32_t rpdo2_cob = to_cob_base(PDOCobIDBase::RPDO2) + node_id;
+    uint32_t tpdo1_cob = to_cob_base(PDOCobIDBase::TPDO1) + node_id;
+    uint32_t tpdo2_cob = to_cob_base(PDOCobIDBase::TPDO2) + node_id;
 
     INFO("  RPDO1 COB-ID: 0x" << std::hex << rpdo1_cob);
     INFO("  RPDO2 COB-ID: 0x" << std::hex << rpdo2_cob);

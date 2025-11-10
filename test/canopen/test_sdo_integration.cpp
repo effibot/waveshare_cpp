@@ -189,12 +189,21 @@ TEST_CASE_METHOD(CANopenIntegrationFixture, "SDO Integration: Read Error Registe
             INFO("  ✓ No errors detected");
         } else {
             WARN("  Errors detected:");
-            if (error_reg & ERR_GENERIC) WARN("    - Generic error");
-            if (error_reg & ERR_CURRENT) WARN("    - Current error");
-            if (error_reg & ERR_VOLTAGE) WARN("    - Voltage error");
-            if (error_reg & ERR_TEMPERATURE) WARN("    - Temperature error");
-            if (error_reg & ERR_COMMUNICATION) WARN("    - Communication error");
-            if (error_reg & ERR_DEVICE_PROFILE) WARN("    - Device profile specific");
+            if (error_reg & canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::GENERIC))
+                WARN("    - Generic error");
+            if (error_reg & canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::CURRENT))
+                WARN("    - Current error");
+            if (error_reg & canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::VOLTAGE))
+                WARN("    - Voltage error");
+            if (error_reg &
+                canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::TEMPERATURE))
+                WARN("    - Temperature error");
+            if (error_reg &
+                canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::COMMUNICATION))
+                WARN("    - Communication error");
+            if (error_reg &
+                canopen::cia402::to_mask(canopen::cia402::ErrorRegisterBit::DEVICE_PROFILE))
+                WARN("    - Device profile specific");
         }
 
         // Test passes regardless, just informational

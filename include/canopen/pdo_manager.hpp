@@ -288,7 +288,7 @@ namespace canopen {
              * @return COB-ID (RPDO1_BASE + node_id)
              */
             static uint32_t rpdo1_cob_id(uint8_t node_id) {
-                return pdo::cob_id::RPDO1_BASE + node_id;
+                return pdo::to_cob_base(pdo::PDOCobIDBase::RPDO1) + node_id;
             }
 
             /**
@@ -297,7 +297,7 @@ namespace canopen {
              * @return COB-ID (RPDO2_BASE + node_id)
              */
             static uint32_t rpdo2_cob_id(uint8_t node_id) {
-                return pdo::cob_id::RPDO2_BASE + node_id;
+                return pdo::to_cob_base(pdo::PDOCobIDBase::RPDO2) + node_id;
             }
 
             /**
@@ -306,7 +306,7 @@ namespace canopen {
              * @return COB-ID (TPDO1_BASE + node_id)
              */
             static uint32_t tpdo1_cob_id(uint8_t node_id) {
-                return pdo::cob_id::TPDO1_BASE + node_id;
+                return pdo::to_cob_base(pdo::PDOCobIDBase::TPDO1) + node_id;
             }
 
             /**
@@ -315,7 +315,7 @@ namespace canopen {
              * @return COB-ID (TPDO2_BASE + node_id)
              */
             static uint32_t tpdo2_cob_id(uint8_t node_id) {
-                return pdo::cob_id::TPDO2_BASE + node_id;
+                return pdo::to_cob_base(pdo::PDOCobIDBase::TPDO2) + node_id;
             }
 
             /**

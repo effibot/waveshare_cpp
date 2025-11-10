@@ -2,10 +2,17 @@
  * @file cia402_constants.hpp
  * @brief CIA402 CANopen Device Profile Constants and Definitions
  * @author effibot (andrea.efficace1@gmail.com)
- * @date 2025-11-06
+ * @date 2025-11-10
  *
  * This header defines all constants for CIA402 (CANopen drives and motion control)
- * including object dictionary indices, state machine definitions, and bit masks.
+ * including state machine definitions and bit masks.
+ *
+ * Design Philosophy (2025-11-10):
+ * - Type-safe enums ONLY (no raw constexpr values)
+ * - Register indices: Use CIA402Register enum from cia402_registers.hpp
+ * - COB-IDs: Use PDOCobIDBase enum from pdo_constants.hpp
+ * - States: Use State enum (already defined here)
+ * - Operation modes: Use OperationMode enum (already defined here)
  *
  * References:
  * - CiA 301: CANopen Application Layer and Communication Profile
@@ -15,60 +22,10 @@
 #pragma once
 
 #include <cstdint>
+#include "cia402_registers.hpp"  // Type-safe register enums
 
 namespace canopen {
     namespace cia402 {
-
-// ==============================================================================
-// CANopen Object Dictionary Indices (CiA 301 & CiA 402)
-// ==============================================================================
-
-// --- Communication Profile Objects (0x1000 - 0x1FFF) ---
-        constexpr uint16_t DEVICE_TYPE = 0x1000;
-        constexpr uint16_t ERROR_REGISTER = 0x1001;
-        constexpr uint16_t PREDEFINED_ERROR_FIELD = 0x1003;
-        constexpr uint16_t IDENTITY_OBJECT = 0x1018;
-
-// --- Device Control & Status (0x6000 - 0x6FFF) ---
-        constexpr uint16_t CONTROLWORD = 0x6040;
-        constexpr uint16_t STATUSWORD = 0x6041;
-        constexpr uint16_t VELOCITY_DEMAND = 0x6043;
-
-// --- Mode Control ---
-        constexpr uint16_t MODES_OF_OPERATION = 0x6060;
-        constexpr uint16_t MODES_OF_OPERATION_DISPLAY = 0x6061;
-
-// --- Position Control ---
-        constexpr uint16_t POSITION_DEMAND = 0x6062;
-        constexpr uint16_t POSITION_ACTUAL = 0x6064;
-        constexpr uint16_t TARGET_POSITION = 0x607A;
-        constexpr uint16_t HOME_OFFSET = 0x607C;
-
-// --- Velocity Control ---
-        constexpr uint16_t VELOCITY_ACTUAL = 0x606C;
-        constexpr uint16_t TARGET_VELOCITY = 0x60FF;
-        constexpr uint16_t MAX_MOTOR_SPEED = 0x6080;
-        constexpr uint16_t PROFILE_VELOCITY = 0x6081;
-
-// --- Torque Control ---
-        constexpr uint16_t TARGET_TORQUE = 0x6071;
-        constexpr uint16_t MAX_CURRENT = 0x6073;
-        constexpr uint16_t MOTOR_RATED_CURRENT = 0x6075;
-        constexpr uint16_t MOTOR_RATED_TORQUE = 0x6076;
-        constexpr uint16_t TORQUE_ACTUAL = 0x6077;
-
-// --- Profile Parameters ---
-        constexpr uint16_t PROFILE_ACCELERATION = 0x6083;
-        constexpr uint16_t PROFILE_DECELERATION = 0x6084;
-        constexpr uint16_t QUICK_STOP_DECELERATION = 0x6085;
-
-// --- Digital I/O ---
-        constexpr uint16_t DIGITAL_INPUTS = 0x60FD;
-        constexpr uint16_t DIGITAL_OUTPUTS = 0x60FE;
-
-// --- Manufacturer Specific (0x2000 - 0x5FFF) ---
-// Note: These are manufacturer-specific and may vary
-        constexpr uint16_t TEMPERATURE = 0x2205;
 
 // ==============================================================================
 // CIA402 State Machine
@@ -115,63 +72,125 @@ namespace canopen {
 // Statusword Bit Definitions (0x6041)
 // ==============================================================================
 
-// Individual bit masks
-        constexpr uint16_t SW_READY_TO_SWITCH_ON = 0x0001; ///< Bit 0: Ready to switch on
-        constexpr uint16_t SW_SWITCHED_ON = 0x0002;  ///< Bit 1: Switched on
-        constexpr uint16_t SW_OPERATION_ENABLED = 0x0004; ///< Bit 2: Operation enabled
-        constexpr uint16_t SW_FAULT = 0x0008;        ///< Bit 3: Fault
-        constexpr uint16_t SW_VOLTAGE_ENABLED = 0x0010; ///< Bit 4: Voltage enabled
-        constexpr uint16_t SW_QUICK_STOP = 0x0020;   ///< Bit 5: Quick stop (0=active)
-        constexpr uint16_t SW_SWITCH_ON_DISABLED = 0x0040; ///< Bit 6: Switch on disabled
-        constexpr uint16_t SW_WARNING = 0x0080;      ///< Bit 7: Warning
-        constexpr uint16_t SW_REMOTE = 0x0200;       ///< Bit 9: Remote (controlled via fieldbus)
-        constexpr uint16_t SW_TARGET_REACHED = 0x0400; ///< Bit 10: Target reached
-        constexpr uint16_t SW_INTERNAL_LIMIT = 0x0800; ///< Bit 11: Internal limit active
+/**
+ * @brief Individual statusword bit masks
+ *
+ * Use for checking individual bits in statusword value.
+ * Example: if (statusword & to_mask(StatuswordBit::FAULT))
+ */
+        enum class StatuswordBit : uint16_t {
+            READY_TO_SWITCH_ON = 0x0001, ///< Bit 0: Ready to switch on
+            SWITCHED_ON = 0x0002,        ///< Bit 1: Switched on
+            OPERATION_ENABLED = 0x0004,  ///< Bit 2: Operation enabled
+            FAULT = 0x0008,              ///< Bit 3: Fault
+            VOLTAGE_ENABLED = 0x0010,    ///< Bit 4: Voltage enabled
+            QUICK_STOP = 0x0020,         ///< Bit 5: Quick stop (0=active)
+            SWITCH_ON_DISABLED = 0x0040, ///< Bit 6: Switch on disabled
+            WARNING = 0x0080,            ///< Bit 7: Warning
+            REMOTE = 0x0200,             ///< Bit 9: Remote (controlled via fieldbus)
+            TARGET_REACHED = 0x0400,     ///< Bit 10: Target reached
+            INTERNAL_LIMIT = 0x0800      ///< Bit 11: Internal limit active
+        };
 
-// State determination patterns (mask bits 0-6, excluding bit 4)
-        constexpr uint8_t SW_MASK = 0x6F;                          ///< Mask for state bits
-        constexpr uint8_t SW_NOT_READY_TO_SWITCH_ON_PATTERN = 0x00; ///< xxxx_x000
-        constexpr uint8_t SW_SWITCH_ON_DISABLED_PATTERN = 0x40;    ///< xxxx_x100_0000
-        constexpr uint8_t SW_READY_TO_SWITCH_ON_PATTERN = 0x21;    ///< xxxx_x010_0001
-        constexpr uint8_t SW_SWITCHED_ON_PATTERN = 0x23;           ///< xxxx_x010_0011
-        constexpr uint8_t SW_OPERATION_ENABLED_PATTERN = 0x27;     ///< xxxx_x010_0111
-        constexpr uint8_t SW_QUICK_STOP_ACTIVE_PATTERN = 0x07;     ///< xxxx_x000_0111
-        constexpr uint8_t SW_FAULT_REACTION_ACTIVE_PATTERN = 0x0F; ///< xxxx_x000_1111
-        constexpr uint8_t SW_FAULT_PATTERN = 0x08;                 ///< xxxx_x000_1000
+        /// Convert StatuswordBit to uint16_t for bitwise operations
+        constexpr uint16_t to_mask(StatuswordBit bit) {
+            return static_cast<uint16_t>(bit);
+        }
+
+/**
+ * @brief Statusword state detection patterns
+ *
+ * Used internally by decode_statusword() to determine device state.
+ * These patterns match specific bit combinations per CIA402 spec.
+ */
+        enum class StatuswordPattern : uint8_t {
+            MASK = 0x6F,                     ///< Mask for state bits (bits 0-6, excluding bit 4)
+            NOT_READY_TO_SWITCH_ON = 0x00,   ///< xxxx_x000
+            SWITCH_ON_DISABLED = 0x40,       ///< xxxx_x100_0000
+            READY_TO_SWITCH_ON = 0x21,       ///< xxxx_x010_0001
+            SWITCHED_ON = 0x23,              ///< xxxx_x010_0011
+            OPERATION_ENABLED = 0x27,        ///< xxxx_x010_0111
+            QUICK_STOP_ACTIVE = 0x07,        ///< xxxx_x000_0111
+            FAULT_REACTION_ACTIVE = 0x0F,    ///< xxxx_x000_1111
+            FAULT = 0x08                     ///< xxxx_x000_1000
+        };
+
+        /// Convert StatuswordPattern to uint8_t
+        constexpr uint8_t to_pattern(StatuswordPattern pattern) {
+            return static_cast<uint8_t>(pattern);
+        }
 
 // ==============================================================================
 // Controlword Bit Definitions (0x6040)
 // ==============================================================================
 
-// Individual bit masks
-        constexpr uint16_t CW_SWITCH_ON_BIT = 0x0001;  ///< Bit 0: Switch on
-        constexpr uint16_t CW_ENABLE_VOLTAGE_BIT = 0x0002; ///< Bit 1: Enable voltage
-        constexpr uint16_t CW_QUICK_STOP_BIT = 0x0004; ///< Bit 2: Quick stop (1=disabled, 0=active)
-        constexpr uint16_t CW_ENABLE_OPERATION_BIT = 0x0008; ///< Bit 3: Enable operation
-        constexpr uint16_t CW_FAULT_RESET_BIT = 0x0080; ///< Bit 7: Fault reset (rising edge)
-        constexpr uint16_t CW_HALT_BIT = 0x0100;       ///< Bit 8: Halt
+/**
+ * @brief Individual controlword bit masks
+ *
+ * Use for setting/clearing individual bits in controlword.
+ * Example: controlword |= to_mask(ControlwordBit::SWITCH_ON)
+ */
+        enum class ControlwordBit : uint16_t {
+            SWITCH_ON = 0x0001,         ///< Bit 0: Switch on
+            ENABLE_VOLTAGE = 0x0002,    ///< Bit 1: Enable voltage
+            QUICK_STOP = 0x0004,        ///< Bit 2: Quick stop (1=disabled, 0=active)
+            ENABLE_OPERATION = 0x0008,  ///< Bit 3: Enable operation
+            FAULT_RESET = 0x0080,       ///< Bit 7: Fault reset (rising edge)
+            HALT = 0x0100               ///< Bit 8: Halt
+        };
 
-// Standard controlword commands
-        constexpr uint16_t CW_SHUTDOWN = 0x0006;       ///< Shutdown: xxxx_xxxx_x110
-        constexpr uint16_t CW_SWITCH_ON = 0x0007;      ///< Switch On: xxxx_xxxx_x111
-        constexpr uint16_t CW_SWITCH_ON_ENABLE_OP = 0x000F; ///< Switch On + Enable: xxxx_xxxx_1111
-        constexpr uint16_t CW_DISABLE_VOLTAGE = 0x0000; ///< Disable Voltage: xxxx_xxxx_xx0x
-        constexpr uint16_t CW_QUICK_STOP = 0x0002;     ///< Quick Stop: xxxx_xxxx_x01x
-        constexpr uint16_t CW_DISABLE_OPERATION = 0x0007; ///< Disable Operation: xxxx_xxxx_x111
-        constexpr uint16_t CW_ENABLE_OPERATION = 0x000F; ///< Enable Operation: xxxx_xxxx_1111
-        constexpr uint16_t CW_FAULT_RESET = 0x0080;    ///< Fault Reset: 1xxx_xxxx_xxxx
+        /// Convert ControlwordBit to uint16_t for bitwise operations
+        constexpr uint16_t to_mask(ControlwordBit bit) {
+            return static_cast<uint16_t>(bit);
+        }
+
+/**
+ * @brief Standard controlword command values
+ *
+ * Predefined command patterns for common state transitions.
+ * Write these values directly to controlword register.
+ * Example: sdo_write(CONTROLWORD, to_command(ControlwordCommand::SHUTDOWN))
+ */
+        enum class ControlwordCommand : uint16_t {
+            SHUTDOWN = 0x0006,           ///< Shutdown: xxxx_xxxx_x110
+            SWITCH_ON = 0x0007,          ///< Switch On: xxxx_xxxx_x111
+            SWITCH_ON_ENABLE_OP = 0x000F,///< Switch On + Enable: xxxx_xxxx_1111
+            DISABLE_VOLTAGE = 0x0000,    ///< Disable Voltage: xxxx_xxxx_xx0x
+            QUICK_STOP = 0x0002,         ///< Quick Stop: xxxx_xxxx_x01x
+            DISABLE_OPERATION = 0x0007,  ///< Disable Operation: xxxx_xxxx_x111
+            ENABLE_OPERATION = 0x000F,   ///< Enable Operation: xxxx_xxxx_1111
+            FAULT_RESET = 0x0080         ///< Fault Reset: 1xxx_xxxx_xxxx
+        };
+
+        /// Convert ControlwordCommand to uint16_t
+        constexpr uint16_t to_command(ControlwordCommand cmd) {
+            return static_cast<uint16_t>(cmd);
+        }
 
 // ==============================================================================
 // Error Register Bit Definitions (0x1001)
 // ==============================================================================
 
-        constexpr uint8_t ERR_GENERIC = 0x01;   ///< Bit 0: Generic error
-        constexpr uint8_t ERR_CURRENT = 0x02;   ///< Bit 1: Current error
-        constexpr uint8_t ERR_VOLTAGE = 0x04;   ///< Bit 2: Voltage error
-        constexpr uint8_t ERR_TEMPERATURE = 0x08; ///< Bit 3: Temperature error
-        constexpr uint8_t ERR_COMMUNICATION = 0x10; ///< Bit 4: Communication error
-        constexpr uint8_t ERR_DEVICE_PROFILE = 0x20; ///< Bit 5: Device profile specific error
-        constexpr uint8_t ERR_MANUFACTURER = 0x80; ///< Bit 7: Manufacturer specific error
+/**
+ * @brief Error register bit masks
+ *
+ * Bits in the error register (object 0x1001) indicate different error types.
+ * Example: if (error_reg & to_mask(ErrorRegisterBit::GENERIC))
+ */
+        enum class ErrorRegisterBit : uint8_t {
+            GENERIC = 0x01,         ///< Bit 0: Generic error
+            CURRENT = 0x02,         ///< Bit 1: Current error
+            VOLTAGE = 0x04,         ///< Bit 2: Voltage error
+            TEMPERATURE = 0x08,     ///< Bit 3: Temperature error
+            COMMUNICATION = 0x10,   ///< Bit 4: Communication error
+            DEVICE_PROFILE = 0x20,  ///< Bit 5: Device profile specific error
+            MANUFACTURER = 0x80     ///< Bit 7: Manufacturer specific error
+        };
+
+        /// Convert ErrorRegisterBit to uint8_t for bitwise operations
+        constexpr uint8_t to_mask(ErrorRegisterBit bit) {
+            return static_cast<uint8_t>(bit);
+        }
 
 // ==============================================================================
 // Helper Functions
@@ -226,17 +245,21 @@ namespace canopen {
  * to determine the current state of the device according to CIA402 specification.
  */
         inline State decode_statusword(uint16_t statusword) {
-            uint8_t state_bits = statusword & SW_MASK;
+            uint8_t state_bits = statusword & to_pattern(StatuswordPattern::MASK);
 
             switch (state_bits) {
-            case SW_NOT_READY_TO_SWITCH_ON_PATTERN: return State::NOT_READY_TO_SWITCH_ON;
-            case SW_SWITCH_ON_DISABLED_PATTERN: return State::SWITCH_ON_DISABLED;
-            case SW_READY_TO_SWITCH_ON_PATTERN: return State::READY_TO_SWITCH_ON;
-            case SW_SWITCHED_ON_PATTERN: return State::SWITCHED_ON;
-            case SW_OPERATION_ENABLED_PATTERN: return State::OPERATION_ENABLED;
-            case SW_QUICK_STOP_ACTIVE_PATTERN: return State::QUICK_STOP_ACTIVE;
-            case SW_FAULT_REACTION_ACTIVE_PATTERN: return State::FAULT_REACTION_ACTIVE;
-            case SW_FAULT_PATTERN: return State::FAULT;
+            case to_pattern(
+                StatuswordPattern::NOT_READY_TO_SWITCH_ON): return State::NOT_READY_TO_SWITCH_ON;
+            case to_pattern(
+                StatuswordPattern::SWITCH_ON_DISABLED): return State::SWITCH_ON_DISABLED;
+            case to_pattern(
+                StatuswordPattern::READY_TO_SWITCH_ON): return State::READY_TO_SWITCH_ON;
+            case to_pattern(StatuswordPattern::SWITCHED_ON): return State::SWITCHED_ON;
+            case to_pattern(StatuswordPattern::OPERATION_ENABLED): return State::OPERATION_ENABLED;
+            case to_pattern(StatuswordPattern::QUICK_STOP_ACTIVE): return State::QUICK_STOP_ACTIVE;
+            case to_pattern(
+                StatuswordPattern::FAULT_REACTION_ACTIVE): return State::FAULT_REACTION_ACTIVE;
+            case to_pattern(StatuswordPattern::FAULT): return State::FAULT;
             default: return State::UNKNOWN;
             }
         }
@@ -247,7 +270,7 @@ namespace canopen {
  * @return true if fault bit is set
  */
         inline bool has_fault(uint16_t statusword) {
-            return (statusword & SW_FAULT) != 0;
+            return (statusword & to_mask(StatuswordBit::FAULT)) != 0;
         }
 
 /**
@@ -256,7 +279,7 @@ namespace canopen {
  * @return true if warning bit is set
  */
         inline bool has_warning(uint16_t statusword) {
-            return (statusword & SW_WARNING) != 0;
+            return (statusword & to_mask(StatuswordBit::WARNING)) != 0;
         }
 
 /**
@@ -265,7 +288,7 @@ namespace canopen {
  * @return true if target reached bit is set
  */
         inline bool target_reached(uint16_t statusword) {
-            return (statusword & SW_TARGET_REACHED) != 0;
+            return (statusword & to_mask(StatuswordBit::TARGET_REACHED)) != 0;
         }
 
 /**
@@ -283,7 +306,7 @@ namespace canopen {
  * @return true if voltage enabled bit is set
  */
         inline bool voltage_enabled(uint16_t statusword) {
-            return (statusword & SW_VOLTAGE_ENABLED) != 0;
+            return (statusword & to_mask(StatuswordBit::VOLTAGE_ENABLED)) != 0;
         }
 
     } // namespace cia402
