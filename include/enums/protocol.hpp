@@ -22,6 +22,7 @@
 #include <sstream>
 #include <iomanip>
 #include <array>
+#include <algorithm>
 #include <boost/core/span.hpp>
 #include <asm/termbits.h>
 
@@ -294,13 +295,16 @@ namespace waveshare {
      */
     inline CANMode canmode_from_string(const std::string& mode_str, bool& use_default) {
         use_default = false;
-        if (mode_str == "normal") {
+        // convert to lowercase prevently
+        std::string mode_str_ = mode_str;
+        std::transform(mode_str_.begin(), mode_str_.end(), mode_str_.begin(), ::tolower);
+        if (mode_str_ == "normal") {
             return CANMode::NORMAL;
-        } else if (mode_str == "loopback") {
+        } else if (mode_str_ == "loopback") {
             return CANMode::LOOPBACK;
-        } else if (mode_str == "silent") {
+        } else if (mode_str_ == "silent") {
             return CANMode::SILENT;
-        } else if (mode_str == "loopback_silent") {
+        } else if (mode_str_ == "loopback_silent") {
             return CANMode::LOOPBACK_SILENT;
         } else {
             use_default = true;
