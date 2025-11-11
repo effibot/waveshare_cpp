@@ -309,5 +309,45 @@ namespace canopen {
             return (statusword & to_mask(StatuswordBit::VOLTAGE_ENABLED)) != 0;
         }
 
+/**
+ * @brief Get user-friendly description of operation mode with abbreviation
+ * @param mode_value The operation mode as int8_t (value from 0x6060 or 0x6061)
+ * @return Human-readable mode description with abbreviation (e.g., "Profile Position (PP)")
+ */
+        inline const char* get_mode_description(int8_t mode_value) {
+            switch (mode_value) {
+            case 0: return "No Mode";
+            case 1: return "Profile Position (PP)";
+            case 2: return "Velocity Mode";
+            case 3: return "Profile Velocity (PV)";
+            case 4: return "Torque Profile (PT)";
+            case 6: return "Homing (HM)";
+            case 7: return "Interpolated Position (IP)";
+            case 8: return "Cyclic Sync Position (CSP)";
+            case 9: return "Cyclic Sync Velocity (CSV)";
+            case 10: return "Cyclic Sync Torque (CST)";
+            default: return "Unknown Mode";
+            }
+        }
+
+/**
+ * @brief Get user-friendly state description
+ * @param state The CIA402 state enum
+ * @return Human-readable state description (e.g., "Switch On Disabled")
+ */
+        inline const char* get_state_description(State state) {
+            switch (state) {
+            case State::NOT_READY_TO_SWITCH_ON: return "Not Ready to Switch On";
+            case State::SWITCH_ON_DISABLED: return "Switch On Disabled";
+            case State::READY_TO_SWITCH_ON: return "Ready to Switch On";
+            case State::SWITCHED_ON: return "Switched On";
+            case State::OPERATION_ENABLED: return "Operation Enabled";
+            case State::QUICK_STOP_ACTIVE: return "Quick Stop Active";
+            case State::FAULT_REACTION_ACTIVE: return "Fault Reaction Active";
+            case State::FAULT: return "Fault";
+            default: return "Unknown State";
+            }
+        }
+
     } // namespace cia402
 } // namespace canopen
